@@ -595,6 +595,8 @@ var BADGES=[
 var AVATARS=['🦁','🐯','🦊','🐺','🦅','🐉','🦋','⭐','⚡','🔥'];
 var AVATAR_UNLOCK=[0,0,100,200,300,600,1000,1600,2400,3500];
 var COACH_NAMES=['Prof. Nova','Coach Maya','Dr. Spark','Tutor Rex','Ms. Bright'];
+function parseQs(qs){return Array.isArray(qs)?qs:(typeof qs==='string'?JSON.parse(qs||'[]'):[]);}
+
 function getRank(xp){var r=RANKS[0];for(var i=0;i<RANKS.length;i++){if(xp>=RANKS[i].min)r=RANKS[i];}return r;}
 function getNextRank(xp){for(var i=0;i<RANKS.length;i++){if(xp<RANKS[i].min)return RANKS[i];}return null;}
 function xpForLesson(score,maxScore,isFirst){var pct=maxScore>0?score/maxScore:0;return 20+Math.round(pct*30)+(isFirst?10:0);}
@@ -853,7 +855,7 @@ function buildLesson(){
 }
 
 function buildActive(lesson){
-  var qs=(typeof lesson.questions==='string'?JSON.parse(lesson.questions||'[]'):lesson.questions||[]).map(function(q,i){
+  var qs=parseQs(lesson.questions).map(function(q,i){
     return '<div class="q-item"><label>Q'+(i+1)+'. '+esc(q)+'</label>'+
       '<textarea id="ans_'+i+'" oninput="S.drafts['+i+']=this.value">'+esc(S.drafts[i]||'')+'</textarea></div>';
   }).join('');
@@ -1138,7 +1140,7 @@ async function submitLesson(){
   var lesson=entry.lesson;
 
   var answers={};
-  (lesson.questions||[]).forEach(function(_,i){var el=document.getElementById('ans_'+i);answers[i]=el?el.value:(S.drafts[i]||'');});
+  parseQs(lesson.questions).forEach(function(_,i){var el=document.getElementById('ans_'+i);answers[i]=el?el.value:(S.drafts[i]||'');});
 
   var el=document.getElementById('lbody');
   if(el)el.innerHTML='<div class="lcard"><div class="spin-state"><div class="spin"></div>Marking your work\u2026</div></div>';
@@ -1147,8 +1149,9 @@ async function submitLesson(){
   try{ sub=await apiAddSub({lesson_id:lesson.id,answers:answers},S.token); }
   catch(e){ sub={id:uid(),lesson_id:lesson.id,answers:answers}; }
 
-  var maxSc=(lesson.questions||[]).length*2;
-  var qa=(lesson.questions||[]).map(function(q,i){return 'Q'+(i+1)+': '+q+'\nAnswer: '+(answers[i]||'(no answer)');}).join('\n\n');
+  var _qs=parseQs(lesson.questions);
+  var maxSc=_qs.length*2;
+  var qa=_qs.map(function(q,i){return 'Q'+(i+1)+': '+q+'\nAnswer: '+(answers[i]||'(no answer)');}).join('\n\n');
 
   var safeTitle=(lesson.title||'').replace(/'/g,'').replace(/"/g,'');
   var mPrompt='You are a '+KS_MAP[S.activeChild.age]+' teacher marking a '+S.activeChild.age+'-year-old student\'s '+S.subject+' work.\n'+
