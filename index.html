@@ -871,9 +871,11 @@ function buildActive(lesson){
 }
 
 function buildMarked(entry){
-  var l=entry.lesson, m=entry.marking, a=(entry.submission&&entry.submission.answers)||{};
-  var pct=Math.round(m.score/m.max_score*100);
-  var qs=(l.questions||[]).map(function(q,i){
+  var l=entry.lesson, m=entry.marking;
+  var _ra=(entry.submission&&entry.submission.answers)||{};
+  var a=typeof _ra==='string'?JSON.parse(_ra||'{}'):_ra;
+  var pct=Math.round(parseInt(m.score||0)/Math.max(parseInt(m.max_score||1),1)*100);
+  var qs=parseQs(l.questions).map(function(q,i){
     return '<div class="q-item"><label>Q'+(i+1)+'. '+esc(q)+'</label><div class="ans-box">'+esc(a[i]||'(no answer given)')+'</div></div>';
   }).join('');
   return '<div class="done-banner">\u2713 Lesson complete! <span class="score-badge '+scCls(pct)+'">'+m.score+'/'+m.max_score+' \u00b7 '+pct+'%</span></div>'+
