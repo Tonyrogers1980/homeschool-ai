@@ -1029,7 +1029,9 @@ async function loadTodayLessons(){
   var ls=await apiLessons(S.activeChild.id,today(),S.token);
   if(!ls||!ls.length)return;
   for(var i=0;i<ls.length;i++){
-    var l=ls[i], key=l.subject+'_'+l.part, entry={lesson:l};
+    var l=ls[i];
+    if(l.title==='Generation failed'||!l.content||l.content==='Could not generate lesson. Please go back and try again.')continue;
+    var key=l.subject+'_'+l.part, entry={lesson:l};
     var sub=await apiGetSub(l.id,S.token);
     if(sub){ entry.submission=sub; var mk=await apiGetMark(l.id,S.token); if(mk)entry.marking=mk; }
     S.todayLessons[key]=entry;
