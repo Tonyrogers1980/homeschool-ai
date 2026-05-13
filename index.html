@@ -1101,7 +1101,15 @@ async function generateLesson(){
     var res=await fetch(AIURL,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt:prompt,max_tokens:1200})});
     var data=await res.json();
-    var txt=''; if(data.content)data.content.forEach(function(b){if(b.text)txt+=b.text;});
+    console.log('[generateLesson] status:',res.status,'data:',JSON.stringify(data).slice(0,300));
+    if(!res.ok) throw new Error('Proxy error '+res.status+': '+JSON.stringify(data).slice(0,200));
+    var txt='';
+    // Handle both direct Anthropic response and n8n-wrapped response
+    var payload=data;
+    if(data.body&&data.body.content) payload=data.body;
+    if(payload.content) payload.content.forEach(function(b){if(b.text)txt+=b.text;});
+    if(!txt) throw new Error('Empty response from AI');
+    console.log('[generateLesson] txt:',txt.slice(0,200));
     lesson=extractJSON(txt);
     lesson.book_title=isEng?safeBook:null;
   }catch(e){
@@ -1153,7 +1161,12 @@ async function submitLesson(){
     var res=await fetch(AIURL,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt:mPrompt,max_tokens:800})});
     var data=await res.json();
-    var txt=''; if(data.content)data.content.forEach(function(b){if(b.text)txt+=b.text;});
+    console.log('[submitLesson] status:',res.status,'data:',JSON.stringify(data).slice(0,200));
+    if(!res.ok) throw new Error('Proxy error '+res.status);
+    var txt='';
+    var payload=data;
+    if(data.body&&data.body.content) payload=data.body;
+    if(payload.content) payload.content.forEach(function(b){if(b.text)txt+=b.text;});
     mark=extractJSON(txt);
   }catch(e){
     console.error('mark:',e);
