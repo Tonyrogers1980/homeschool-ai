@@ -622,7 +622,7 @@ function setAvatar(i){S.avatar=i;saveGameState();render();}
 
 /* ── UTILS ──────────────────────────────────────────────────────────────────── */
 function today()   { return new Date().toISOString().slice(0,10); }
-function pickBook(ks) { var p=BOOKS[ks]||BOOKS.KS2; return p[Math.floor(Date.now()/86400000)%p.length]; }
+function pickBook(ks, childId, lessonCount) { var p=BOOKS[ks]||BOOKS.KS2; var seed=Math.floor(Date.now()/86400000)*31+(lessonCount||0)*7+(childId?childId.charCodeAt(0)+childId.charCodeAt(childId.length-1):0); return p[seed%p.length]; }
 function scCls(p)  { return p>=70?'sc-hi':p>=50?'sc-mi':'sc-lo'; }
 function subClr(id){ var s=SUBJECTS.find(function(x){return x.id===id;}); return s?s.color:'#888'; }
 function fmtDate(d){ return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}); }
@@ -1091,21 +1091,84 @@ async function switchChild(id){
 /* ── LESSON GENERATION ──────────────────────────────────────────────────────── */
 async function generateLesson(){
   var c=S.activeChild, ks=KS_MAP[c.age], key=S.subject+'_'+S.part;
-  var pn=S.part==='L1'?1:2, isEng=S.subject==='english', book=isEng?pickBook(ks):'';
+  var pn=S.part==='L1'?1:2, isEng=S.subject==='english', _engCount=S.history.filter(function(h){return h.lesson.subject==='english';}).length, book=isEng?pickBook(ks,c.id,_engCount):'';
 
   var safeBook=book.replace(/'/g,'').replace(/"/g,'');
-  var prompt='You are an experienced UK '+ks+' teacher generating a '+S.subject+' lesson for a '+c.age+'-year-old student.\n'+
-    'This is Lesson '+pn+' of 2.'+(pn===2?' Lesson 2 should build on Lesson 1 and be slightly more challenging.':'')+'\n'+
-    (isEng?'Base this English lesson around the book: '+safeBook+'. Cover comprehension, vocabulary, themes, or creative writing inspired by it.\n':'')+
-    'IMPORTANT: Respond ONLY with a single valid JSON object. No markdown fences, no explanation, no text before or after the JSON.\n'+
-    'CRITICAL: Do NOT use apostrophes or single quotes anywhere inside JSON string values. Reword contractions and possessives to avoid them (e.g. use "does not" instead of "doesn\'t", use "the author\'s style" as "the style of the author").\n'+
-    'Use only straight double-quotes for JSON structure. Never use curly/smart quotes.\n'+
-    '{"title":"lesson title here","content":"3-4 paragraphs of engaging age-appropriate UK curriculum content","questions":["question 1","question 2","question 3","question 4","question 5"],"youtube_query":"6 to 10 word YouTube search query"}';
+
+  // Build recent topic history to avoid repetition
+  var recentTopics=S.history
+    .filter(function(h){return h.lesson.subject===S.subject;})
+    .slice(-6)
+    .map(function(h){return h.lesson.title;})
+    .join(', ');
+
+  // Question counts by subject (~25 mins each)
+  var qCount={maths:10,english:4,science:6,history:5,geography:5}[S.subject]||5;
+
+  // UK National Curriculum topic guidance by subject and key stage
+  var topicGuide={
+    maths:{
+      KS1:'number bonds, counting, simple addition and subtraction, place value to 100, halves and quarters, simple shapes and measurements, telling the time',
+      KS2:'multiplication and division, fractions decimals and percentages, place value to millions, negative numbers, ratio and proportion, algebra basics, area and perimeter, volume, statistics, angles and geometry',
+      KS3:'algebra and linear equations, proportional reasoning, Pythagoras theorem, probability, statistics, sequences, transformations, construction and loci, indices',
+      KS4:'quadratic equations, simultaneous equations, trigonometry, vectors, circle theorems, statistical distributions, proof, surds and bounds'
+    },
+    science:{
+      KS1:'plants and their needs, animals and humans, everyday materials, seasonal changes',
+      KS2:'living things and habitats, food chains, human body and nutrition, properties of materials, rocks and fossils, light and shadows, forces and magnets, electricity and circuits, Earth and space, evolution and inheritance',
+      KS3:'cells and organisation, reproduction, ecosystems and interdependence, chemistry of materials, chemical reactions, acids and alkalis, energy transfers, electricity and magnetism, waves, forces and motion, space physics',
+      KS4:'genetics and evolution, homeostasis, atomic structure, bonding, rates of reaction, electrolysis, energy resources, fields, electromagnetic spectrum, nuclear physics'
+    },
+    history:{
+      KS1:'changes within living memory, lives of significant historical figures, events beyond living memory, local history',
+      KS2:'Stone Age to Iron Age, Ancient Egypt, Ancient Greece, Roman Britain, Anglo-Saxons and Scots, Vikings, a significant turning point in British history such as the Norman Conquest 1066',
+      KS3:'Medieval England and the Black Death, the Tudors and religious change, the English Civil War, Britain and the British Empire, the Industrial Revolution, causes and events of World War One, the rise of Nazi Germany and World War Two, the Holocaust, the Cold War and civil rights movements',
+      KS4:'Weimar and Nazi Germany 1918-1945, America in the Cold War era, medicine through time, the historic environment, a period study and a thematic study'
+    },
+    geography:{
+      KS1:'local area, the four countries of the UK and their capitals, hot and cold places, weather and seasons, basic map skills',
+      KS2:'UK regions and physical features, European countries, North America, South America, biomes and climate zones, rivers and the water cycle, volcanoes and earthquakes, human and physical geography, map skills and grid references, fieldwork',
+      KS3:'population growth and urbanisation, development and global inequality, climate change and its impacts, coasts and coastal processes, rivers and flooding, glaciation, tectonic hazards, global trade and economic activity, energy resources',
+      KS4:'global distribution of biomes and ecosystems, urban change in UK cities, global development gap, coastal change and conflict, hazardous environments, the challenge of resource management'
+    },
+    english:{
+      KS1:'phonics and decoding, simple sentence writing, reading for meaning, character description, retelling stories',
+      KS2:'reading comprehension and inference, vocabulary in context, narrative writing, persuasive and non-fiction writing, poetry appreciation, figurative language, grammar punctuation and spelling',
+      KS3:'analysis of fiction and non-fiction texts, language and structural techniques, context and themes, creative writing, argument and rhetoric, Shakespeare introduction, comparing texts',
+      KS4:'literary analysis with evidence, comparing texts and writers craft, language techniques in depth, writing for different purposes and audiences, unseen poetry, spoken language study'
+    }
+  };
+  var curriculumHint=(topicGuide[S.subject]&&topicGuide[S.subject][ks])||'';
+
+  var prompt=
+    'You are an expert UK '+ks+' teacher creating a '+S.subject+' lesson for a '+c.age+'-year-old in Year '+(c.age-4)+'.\n'+
+    (isEng?'BOOK FOR THIS LESSON: '+safeBook+'. Focus on comprehension, vocabulary, themes, inference, or creative writing inspired by this book.\n':'')+
+    (recentTopics?'TOPICS ALREADY COVERED RECENTLY - choose a DIFFERENT topic: '+recentTopics+'\n':'')+
+    'CURRICULUM AREAS FOR THIS SUBJECT ('+ks+'): '+curriculumHint+'\n'+
+    'LESSON '+pn+' OF 2.'+(pn===2?' This lesson MUST build directly on Lesson 1 with greater depth and challenge.':'')+' \n'+
+    '\n'+
+    'REQUIREMENTS:\n'+
+    '- Pick one specific focused topic from the curriculum areas above that has NOT been covered recently\n'+
+    '- Content must be precisely right for a '+c.age+'-year-old UK Year '+(c.age-4)+' student\n'+
+    '- The lesson should take 25 minutes to complete including reading and answering\n'+
+    '- Write exactly '+qCount+' questions - this subject needs '+qCount+' questions to fill 25 minutes appropriately\n'+
+    '- Questions must progress: start with recall, move to application, finish with analysis or evaluation\n'+
+    '- For maths: every question must include actual numbers to calculate - not just explanations\n'+
+    '- NEVER ask the student to draw, sketch, create a diagram, use physical resources, or go outside\n'+
+    '- ALL questions must be answerable by typing text - this is a digital app\n'+
+    '- Use UK English spelling and UK context (pounds not dollars, UK places, UK curriculum)\n'+
+    '\n'+
+    'CRITICAL JSON RULES:\n'+
+    '- Respond ONLY with a single valid JSON object. No markdown fences. No text before or after the JSON.\n'+
+    '- Do NOT use apostrophes or single quotes inside string values. Reword contractions (use "do not" not "don" + apostrophe + "t").\n'+
+    '- Use only straight double-quotes for all JSON structure.\n'+
+    '\n'+
+    '{"title":"specific topic name","content":"4 paragraphs of clear engaging age-appropriate UK curriculum content","questions":["question 1","question 2"],"youtube_query":"6-8 word YouTube search for educational video on this topic"}'
 
   var lesson=null;
   try{
     var res=await fetch(AIURL,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt:prompt,max_tokens:1200})});
+      body:JSON.stringify({prompt:prompt,max_tokens:2000})});
     var data=await res.json();
     console.log('[generateLesson] status:',res.status,'data:',JSON.stringify(data).slice(0,300));
     if(!res.ok) throw new Error('Proxy error '+res.status+': '+JSON.stringify(data).slice(0,200));
