@@ -777,10 +777,22 @@ function buildOnboard(){
 function buildDash(){
   var c=S.activeChild, ks=KS_MAP[c.age], tl=S.todayLessons;
   var done=0,sc=0,mx=0;
-  SUBJECTS.forEach(function(s){['L1','L2'].forEach(function(p){var e=tl[s.id+'_'+p];if(e&&e.marking){done++;sc+=e.marking.score;mx+=e.marking.max_score;}});});
+  SUBJECTS.forEach(function(s){['L1','L2'].forEach(function(p){var e=tl[s.id+'_'+p];if(e&&e.marking){done++;sc+=parseInt(e.marking.score||0);mx+=parseInt(e.marking.max_score||1);}});});
   var avg=mx>0?Math.round(sc/mx*100):0;
+
+  // Merge today's completed lessons into history dates and totals
   var dates={};
   S.history.forEach(function(h){dates[h.lesson.lesson_date]=true;});
+  // Add today's if any completed (may not be in S.history yet)
+  if(done>0) dates[today()]=true;
+
+  // Total all-time lessons = history + any today not yet in history
+  var todayIds={};
+  Object.values(tl).forEach(function(e){if(e&&e.marking&&e.lesson&&e.lesson.id)todayIds[e.lesson.id]=true;});
+  var histIds={};
+  S.history.forEach(function(h){if(h.lesson&&h.lesson.id)histIds[h.lesson.id]=true;});
+  var todayNotInHist=Object.keys(todayIds).filter(function(id){return !histIds[id];}).length;
+  var totalLessons=S.history.length+todayNotInHist;
 
   var streakH='<div class="streak-bar">';
   var act7=0;
@@ -823,7 +835,7 @@ function buildDash(){
     '<div class="stats-grid">'+
     '<div class="stat-tile"><div class="n">'+done+'</div><div class="l">Today</div></div>'+
     '<div class="stat-tile"><div class="n">'+(mx>0?avg+'%':'\u2014')+'</div><div class="l">Avg score</div></div>'+
-    '<div class="stat-tile"><div class="n">'+S.history.length+'</div><div class="l">All lessons</div></div>'+
+    '<div class="stat-tile"><div class="n">'+totalLessons+'</div><div class="l">All lessons</div></div>'+
     '<div class="stat-tile"><div class="n">'+Object.keys(dates).length+'</div><div class="l">Days active</div></div>'+
     '</div>'+
     '<div class="subj-label">Today\'s subjects</div>'+
@@ -1034,10 +1046,17 @@ async function loadTodayLessons(){
   if(!ls||!ls.length)return;
   for(var i=0;i<ls.length;i++){
     var l=ls[i];
-    if(l.title==='Generation failed'||!l.content||l.content==='Could not generate lesson. Please go back and try again.')continue;
-    var key=l.subject+'_'+l.part, entry={lesson:l};
-    var sub=await apiGetSub(l.id,S.token);
-    if(sub){ entry.submission=sub; var mk=await apiGetMark(l.id,S.token); if(mk)entry.marking=mk; }
+    if(!l||!l.content||l.title==='Generation failed')continue;
+    var key=l.subject+'_'+l.part;
+    var entry={lesson:l};
+    // get_lessons now returns submission+marking joined
+    if(l.submission&&l.submission.id) entry.submission=l.submission;
+    if(l.marking&&l.marking.id) entry.marking=l.marking;
+    // fallback to separate calls if not joined
+    if(!entry.submission){
+      var sub=await apiGetSub(l.id,S.token);
+      if(sub){ entry.submission=sub; var mk2=await apiGetMark(l.id,S.token); if(mk2)entry.marking=mk2; }
+    }
     S.todayLessons[key]=entry;
   }
 }
@@ -1047,10 +1066,18 @@ async function loadHistory(){
   var ls=await (DB_MODE==='live'
     ? rpc('get_all_lessons',{p_child_id:S.activeChild.id}).catch(function(e){sbLog('loadHistory',e);return LDB.lessons(S.activeChild.id,null);})
     : Promise.resolve(LDB.lessons(S.activeChild.id,null)));
+  if(!ls||!Array.isArray(ls)) ls=[];
   var hist=[];
   for(var i=0;i<ls.length;i++){
-    var mk=await apiGetMark(ls[i].id,S.token);
-    if(mk) hist.push({lesson:ls[i],marking:mk});
+    var l=ls[i];
+    if(!l||!l.id)continue;
+    // get_all_lessons now returns marking joined directly — no extra API call needed
+    var mk=(l.marking&&l.marking.id) ? l.marking : await apiGetMark(l.id,S.token);
+    if(mk){
+      var entry={lesson:l,marking:mk};
+      if(l.submission&&l.submission.id) entry.submission=l.submission;
+      hist.push(entry);
+    }
   }
   S.history=hist;
 }
