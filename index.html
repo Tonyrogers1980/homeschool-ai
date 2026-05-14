@@ -887,8 +887,28 @@ function buildMarked(entry){
   var _ra=(entry.submission&&entry.submission.answers)||{};
   var a=typeof _ra==='string'?JSON.parse(_ra||'{}'):_ra;
   var pct=Math.round(parseInt(m.score||0)/Math.max(parseInt(m.max_score||1),1)*100);
+  // Parse per-question feedback — stored as JSON in feedback column
+  var qFeedback=[], overall='';
+  try{
+    var fb=m.feedback||'';
+    if(fb.trim()[0]==='{'){
+      var fp=JSON.parse(fb);
+      if(fp.question_feedback) qFeedback=fp.question_feedback;
+      if(fp.overall) overall=fp.overall;
+    } else { overall=fb; }
+  }catch(e){ overall=m.feedback||''; }
+  if(m.question_feedback) try{qFeedback=typeof m.question_feedback==='string'?JSON.parse(m.question_feedback):m.question_feedback;}catch(e){}
+  if(m.overall) overall=m.overall;
   var qs=parseQs(l.questions).map(function(q,i){
-    return '<div class="q-item"><label>Q'+(i+1)+'. '+esc(q)+'</label><div class="ans-box">'+esc(a[i]||'(no answer given)')+'</div></div>';
+    var qf=qFeedback[i]||null;
+    var mark=qf?qf.mark:null;
+    var comment=qf?qf.comment:'';
+    var markBadge=mark!==null?'<span class="q-mark '+(mark>=1?'q-mark-yes':'q-mark-no')+'">'+(mark>=1?'\u2713 1 mark':'\u2715 0 marks')+'</span>':'';
+    return '<div class="q-item marked">'+
+      '<div class="q-row"><label>Q'+(i+1)+'. '+esc(q)+'</label>'+markBadge+'</div>'+
+      '<div class="ans-box">'+esc(a[i]||'(no answer given)')+'</div>'+
+      (comment?'<div class="q-comment">'+esc(comment)+'</div>':'')+
+    '</div>';
   }).join('');
   return '<div class="done-banner">\u2713 Lesson complete! <span class="score-badge '+scCls(pct)+'">'+m.score+'/'+m.max_score+' \u00b7 '+pct+'%</span></div>'+
   '<div class="lcard"><h3>'+esc(l.title)+'</h3><div class="lbody">'+esc(l.content)+'</div>'+
@@ -896,7 +916,10 @@ function buildMarked(entry){
     '<div class="yt-logo">'+YT_SVG+'</div>'+
     '<div class="yt-info"><div class="yt-hint">Watch on YouTube</div><div class="yt-q">'+esc(l.youtube_query||l.title)+'</div></div>'+
   '</a>'+(qs?'<div class="q-list">'+qs+'</div>':'')+
-  '</div><div class="lcard"><div class="fb-head">\ud83d\udcdd Teacher\'s Feedback</div><div class="fb-card">'+esc(m.feedback)+'</div></div>';
+  '</div>'+
+  '<div class="lcard"><div class="fb-head">\ud83d\udcdd Teacher Feedback</div>'+
+  (overall?'<div class="fb-overall">'+esc(overall)+'</div>':'')+
+  '</div>';
 }
 
 
@@ -1242,7 +1265,7 @@ async function submitLesson(){
   catch(e){ sub={id:uid(),lesson_id:lesson.id,answers:answers}; }
 
   var _qs=parseQs(lesson.questions);
-  var maxSc=_qs.length*2;
+  var maxSc=_qs.length; // 1 mark per question
   var qa=_qs.map(function(q,i){return 'Q'+(i+1)+': '+q+'\nAnswer: '+(answers[i]||'(no answer)');}).join('\n\n');
 
   var safeTitle=(lesson.title||'').replace(/'/g,'').replace(/"/g,'');
@@ -1273,7 +1296,7 @@ async function submitLesson(){
   }
 
   var savedMk=null;
-  try{ savedMk=await apiAddMark({submission_id:sub.id,lesson_id:lesson.id,score:mark.score,max_score:mark.max_score,feedback:mark.feedback},S.token); }
+  try{ savedMk=await apiAddMark({submission_id:sub.id,lesson_id:lesson.id,score:mark.score,max_score:mark.max_score,feedback:mark.feedback,question_feedback:mark.question_feedback,overall:mark.overall},S.token); }
   catch(e){ savedMk=Object.assign({id:uid()},mark); }
 
   S.todayLessons[key].submission=sub;
