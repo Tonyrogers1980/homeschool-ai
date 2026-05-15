@@ -1229,24 +1229,68 @@ function renderParentContent(c,lessons,bySubj){
   h+='</div>';
 
   // ── STRENGTHS & AREAS TO IMPROVE ─────────────────────────────────────────
-  var strengths=[], improvements=[];
-  subjectOrder.forEach(function(subj){
-    var d=bySubj[subj];
-    if(!d)return;
-    var pct=parseInt(d.avg_pct||0);
-    if(pct>=75) strengths.push(subj.charAt(0).toUpperCase()+subj.slice(1)+' ('+pct+'%)');
-    else if(pct<60) improvements.push(subj.charAt(0).toUpperCase()+subj.slice(1)+' ('+pct+'%)');
+  // Mine feedback text for specific issues and strengths
+  var issueKeywords=[
+    {pat:/spelling/i, label:'Spelling accuracy'},
+    {pat:/arithmetic|calculation|maths error|check your (maths|working|subtraction|addition|multiplication)/i, label:'Arithmetic accuracy'},
+    {pat:/show (your |the )?working/i, label:'Showing working'},
+    {pat:/more detail|expand|develop|too brief/i, label:'Developing detailed answers'},
+    {pat:/punctuation/i, label:'Punctuation'},
+    {pat:/grammar/i, label:'Grammar'},
+    {pat:/vocabulary|technical term|scientific term/i, label:'Subject vocabulary'},
+    {pat:/read(ing)? (the )?question carefully|re-read|answer all parts/i, label:'Reading questions carefully'},
+    {pat:/explain (more|further|your|why|how)/i, label:'Explaining reasoning'},
+    {pat:/structure|paragraph/i, label:'Answer structure'},
+    {pat:/evidence|quote|reference/i, label:'Using evidence'},
+    {pat:/time|rushed|check (your answers|before)/i, label:'Checking work before submitting'}
+  ];
+  var strengthKeywords=[
+    {pat:/excellent|outstanding|perfect|full marks|100%|very strong/i, label:'Excellent performance'},
+    {pat:/good understanding|solid understanding|strong understanding|grasp/i, label:'Strong topic understanding'},
+    {pat:/creative|thoughtful|original/i, label:'Creative thinking'},
+    {pat:/correct(ly)?.*method|right method|approach is (correct|right|excellent)/i, label:'Correct method'},
+    {pat:/confidence|growing|improving|progress/i, label:'Showing clear progress'}
+  ];
+  var issueMap={}, strengthMap={};
+  lessons.forEach(function(l){
+    var fb=l.feedback||'';
+    try{ var fp=JSON.parse(fb); fb=(fp.overall||'')+' '+(fp.question_feedback||[]).map(function(q){return q.comment||'';}).join(' '); }catch(e){}
+    issueKeywords.forEach(function(k){
+      if(k.pat.test(fb)){
+        var key=l.subject+': '+k.label;
+        issueMap[key]=(issueMap[key]||0)+1;
+      }
+    });
+    strengthKeywords.forEach(function(k){
+      if(k.pat.test(fb)){
+        var key=l.subject.charAt(0).toUpperCase()+l.subject.slice(1)+': '+k.label;
+        strengthMap[key]=(strengthMap[key]||0)+1;
+      }
+    });
   });
-  if(strengths.length||improvements.length){
+  // Sort by frequency, take top items
+  var topIssues=Object.keys(issueMap).sort(function(a,b){return issueMap[b]-issueMap[a];}).slice(0,6);
+  var topStrengths=Object.keys(strengthMap).sort(function(a,b){return strengthMap[b]-strengthMap[a];}).slice(0,6);
+  // Also add high-scoring subjects as strengths
+  subjectOrder.forEach(function(subj){
+    var d=bySubj[subj]; if(!d)return;
+    var pct=parseInt(d.avg_pct||0);
+    if(pct>=80&&d.count>=2){
+      var k=subj.charAt(0).toUpperCase()+subj.slice(1)+': Consistently high scores ('+pct+'% avg)';
+      if(topStrengths.indexOf(k)===-1) topStrengths.unshift(k);
+    }
+  });
+  topStrengths=topStrengths.slice(0,5);
+  if(topStrengths.length||topIssues.length){
     h+='<div class="strengths-grid">';
-    if(strengths.length){
+    if(topStrengths.length){
       h+='<div class="strength-card str-good"><h4 style="color:var(--g)">\u2713 Strengths</h4><ul>';
-      strengths.forEach(function(s){h+='<li>'+esc(s)+'</li>';});
+      topStrengths.forEach(function(s){h+='<li>'+esc(s)+'</li>';});
       h+='</ul></div>';
     }
-    if(improvements.length){
+    if(topIssues.length){
       h+='<div class="strength-card str-improve"><h4 style="color:var(--am)">\u2197 Focus areas</h4><ul>';
-      improvements.forEach(function(s){h+='<li>'+esc(s)+'</li>';});
+      topIssues.forEach(function(s){h+='<li>'+esc(s)+'</li>';});
       h+='</ul></div>';
     }
     h+='</div>';
@@ -1312,7 +1356,7 @@ function renderParentContent(c,lessons,bySubj){
       }catch(e){ feedbackHtml='<div style="font-size:13px;color:var(--t1)">'+esc(l.feedback||'')+'</div>'; }
 
       h+='<div class="lt-item">'+
-        '<div class="lt-head" onclick="toggleLesson(\\x27'+uid+'\\x27)">'+
+        '<div class="lt-head" onclick="toggleLesson(this.dataset.uid)" data-uid="'+uid+'">'+
           '<div class="lt-subj-dot" style="background:'+col+'"></div>'+
           '<div class="lt-info">'+
             '<div class="lt-title">'+esc(l.title)+'</div>'+
