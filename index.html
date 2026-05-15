@@ -1232,7 +1232,17 @@ async function switchChild(id){
 /* ── LESSON GENERATION ──────────────────────────────────────────────────────── */
 async function generateLesson(){
   var c=S.activeChild, ks=KS_MAP[c.age], key=S.subject+'_'+S.part;
-  var pn=S.part==='L1'?1:2, isEng=S.subject==='english', _engCount=S.history.filter(function(h){return h.lesson.subject==='english';}).length, book=isEng?pickBook(ks,c.id,_engCount):'';
+  var pn=S.part==='L1'?1:2, isEng=S.subject==='english';
+  var _engCount=S.history.filter(function(h){return h.lesson.subject==='english';}).length;
+
+  // Set active child read books for pickEnglishType
+  window._activeChildReadBooks=S.activeChild&&S.activeChild.read_books?
+    (typeof S.activeChild.read_books==='string'?JSON.parse(S.activeChild.read_books||'[]'):S.activeChild.read_books):[];
+
+  var _engType=isEng?pickEnglishType(ks,c.id,_engCount):null;
+  var isBookLesson=isEng&&_engType&&_engType.type==='book';
+  var engTopic=isEng&&_engType&&_engType.type==='topic'?_engType.topic:'';
+  var book=isBookLesson?_engType.book:(isEng?pickBook(ks,c.id,_engCount):'');
 
   var safeBook=isBookLesson?book.replace(/'/g,'').replace(/"/g,''):'';
 
