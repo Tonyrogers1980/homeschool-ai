@@ -175,6 +175,17 @@ input,textarea,button{font-family:var(--font)}
 .sc-lo{background:var(--rl);color:var(--rd)}
 .fb-card{background:var(--s1);border-radius:var(--r12);padding:1.25rem;font-size:14px;line-height:1.85;color:var(--t1);white-space:pre-wrap}
 .fb-head{font-size:14px;font-weight:700;color:var(--t0);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.q-item.marked{border:1px solid var(--b0);border-radius:var(--r12);padding:.85rem 1rem;background:var(--s0);box-shadow:var(--shadow-sm);}
+.q-num{font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;padding-top:2px;min-width:20px;}
+.q-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.q-row label{flex:1;font-size:14px;font-weight:600;color:var(--t0);line-height:1.4;}
+.q-mark{font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--rpill);white-space:nowrap;flex-shrink:0;}
+.q-mark-yes{background:#e1f5ee;color:#0f6e56;}
+.q-mark-no{background:#fce8e8;color:#b91c1c;}
+.ans-label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-bottom:3px;}
+.q-comment{font-size:13px;color:var(--t0);background:var(--gl);border-radius:var(--r8);padding:8px 10px;margin-top:4px;line-height:1.5;border-left:3px solid var(--g);}
+.comment-label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gd);margin-bottom:3px;}
+.fb-overall{font-size:14px;color:var(--t1);line-height:1.7;padding:.5rem 0 .25rem;}
 .retry-card{display:flex;flex-direction:column;align-items:center;gap:12px;padding:2rem;text-align:center}
 .retry-card p{font-size:14px;color:var(--t1)}
 
@@ -1025,13 +1036,14 @@ function buildMarked(entry){
   if(m.overall) overall=m.overall;
   var qs=parseQs(l.questions).map(function(q,i){
     var qf=qFeedback[i]||null;
-    var mark=qf?qf.mark:null;
+    var mk=qf?qf.mark:null;
     var comment=qf?qf.comment:'';
-    var markBadge=mark!==null?'<span class="q-mark '+(mark>=1?'q-mark-yes':'q-mark-no')+'">'+(mark>=1?'\u2713 1 mark':'\u2715 0 marks')+'</span>':'';
+    var markBadge=mk!==null?'<span class="q-mark '+(mk>=1?'q-mark-yes':'q-mark-no')+'">'+(mk>=1?'\u2713 1 mark':'\u2715 0 marks')+'</span>':'';
+    var answerTxt=a[i]?esc(a[i]):'<em style="color:var(--t2)">(no answer given)</em>';
     return '<div class="q-item marked">'+
-      '<div class="q-row"><label>Q'+(i+1)+'. '+esc(q)+'</label>'+markBadge+'</div>'+
-      '<div class="ans-box">'+esc(a[i]||'(no answer given)')+'</div>'+
-      (comment?'<div class="q-comment">'+esc(comment)+'</div>':'')+
+      '<div class="q-row"><span class="q-num">Q'+(i+1)+'</span><label>'+esc(q)+'</label>'+markBadge+'</div>'+
+      '<div class="ans-box"><span class="ans-label">Your answer</span>'+answerTxt+'</div>'+
+      (comment?'<div class="q-comment"><span class="comment-label">\ud83d\udcac Feedback</span>'+esc(comment)+'</div>':'')+
     '</div>';
   }).join('');
   return '<div class="done-banner">\u2713 Lesson complete! <span class="score-badge '+scCls(pct)+'">'+m.score+'/'+m.max_score+' \u00b7 '+pct+'%</span></div>'+
@@ -1041,9 +1053,10 @@ function buildMarked(entry){
     '<div class="yt-info"><div class="yt-hint">Watch on YouTube</div><div class="yt-q">'+esc(l.youtube_query||l.title)+'</div></div>'+
   '</a>'+(qs?'<div class="q-list">'+qs+'</div>':'')+
   '</div>'+
-  '<div class="lcard"><div class="fb-head">\ud83d\udcdd Teacher Feedback</div>'+
-  (overall?'<div class="fb-overall">'+esc(overall)+'</div>':'')+
-  '</div>';
+  (overall?'<div class="lcard">'+
+    '<div class="fb-head">\ud83d\udcdd Teacher\'s overall comment</div>'+
+    '<div class="fb-overall">'+esc(overall)+'</div>'+
+  '</div>':'');
 }
 
 
@@ -1187,10 +1200,15 @@ function renderParentContent(c,lessons,bySubj){
   var daysActive=Object.keys(dates).length;
 
   // ── HEADER ────────────────────────────────────────────────────────────────
+  var overallGrade=overallPct>=80?'Strong':overallPct>=65?'Good':overallPct>=50?'Developing':'Needs support';
+  var gradeCol=overallPct>=80?'var(--g)':overallPct>=65?'#378ADD':overallPct>=50?'var(--am)':'var(--rd)';
   h+='<div class="parent-header">';
-  h+='<h2>'+esc(c.name)+' — Progress Report</h2>';
-  h+='<p>'+KS_MAP[c.age]+' \u00b7 Age '+c.age+' \u00b7 '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</p>';
-  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">';
+  h+='<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">';
+  h+='<div><h2 style="margin-bottom:2px">'+esc(c.name)+'</h2>';
+  h+='<p>'+KS_MAP[c.age]+' \u00b7 Year '+(c.age-4)+' \u00b7 Age '+c.age+' \u00b7 '+new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</p></div>';
+  h+='<div style="text-align:right;flex-shrink:0"><div style="font-size:22px;font-weight:700;color:'+gradeCol+'">'+overallGrade+'</div>';
+  h+='<div style="font-size:11px;color:var(--t2)">Overall</div></div></div>';
+  h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
   var stats=[
     {n:totalLessons,l:'Lessons done'},
     {n:overallPct+'%',l:'Overall avg'},
@@ -1327,31 +1345,49 @@ function renderParentContent(c,lessons,bySubj){
       var scoreCls=pct>=80?'var(--g)':pct>=60?'var(--am)':'var(--rd)';
       var uid=l.id.replace(/-/g,'').slice(0,8);
 
-      // Parse feedback
+      // Parse and render feedback for parent view
       var feedbackHtml='';
       try{
         var fb=l.feedback||'';
-        if(fb.trim()[0]==='{'){
-          var fp=JSON.parse(fb);
-          if(fp.question_feedback&&fp.question_feedback.length){
-            feedbackHtml+='<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">';
-            fp.question_feedback.forEach(function(qf){
-              var markCol=qf.mark>=1?'var(--g)':'var(--rd)';
-              feedbackHtml+='<div style="padding:6px 8px;background:var(--s0);border-radius:var(--r8);border-left:3px solid '+markCol+'">'+
-                '<div style="font-size:11px;font-weight:700;color:'+markCol+'">Q'+qf.q+' \u00b7 '+(qf.mark>=1?'1 mark':'0 marks')+'</div>'+
-                '<div style="font-size:12px;color:var(--t1);margin-top:2px">'+esc(qf.comment||'')+'</div>'+
+        var fp=null;
+        if(fb.trim()[0]==='{'){ try{fp=JSON.parse(fb);}catch(pe){} }
+        var qFb=fp&&fp.question_feedback?fp.question_feedback:[];
+        var overall=fp&&fp.overall?fp.overall:(!fp?fb:'');
+
+        // Parent summary — honest, direct
+        if(overall){
+          feedbackHtml+=
+            '<div style="margin-bottom:12px">'+
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);margin-bottom:5px">Parent summary</div>'+
+            '<div style="font-size:13px;color:var(--t0);line-height:1.6;background:var(--s1);border-radius:var(--r8);padding:10px 12px;border-left:3px solid var(--am)">'+esc(overall)+'</div>'+
+            '</div>';
+        }
+
+        // Per-question breakdown — clear correct/incorrect with reasoning
+        if(qFb.length){
+          var correct=qFb.filter(function(q){return q.mark>=1;}).length;
+          feedbackHtml+=
+            '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--t2);margin-bottom:6px">'+
+            'Question breakdown \u00b7 '+correct+'/'+qFb.length+' correct'+
+            '</div>';
+          feedbackHtml+='<div style="display:flex;flex-direction:column;gap:6px">';
+          qFb.forEach(function(qf){
+            var correct2=qf.mark>=1;
+            var bc=correct2?'#e1f5ee':'#fce8e8';
+            var tc=correct2?'#0f6e56':'#b91c1c';
+            var ic=correct2?'#16a974':'var(--rd)';
+            feedbackHtml+=
+              '<div style="background:var(--s0);border:1px solid var(--b0);border-radius:var(--r8);padding:8px 10px;border-left:3px solid '+ic+'">'+
+              '<div style="display:flex;align-items:center;gap:8px;margin-bottom:'+(qf.comment?'5':'0')+'px">'+
+              '<span style="font-size:11px;font-weight:700;color:var(--t2)">Q'+qf.q+'</span>'+
+              '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--rpill);background:'+bc+';color:'+tc+'">'+(correct2?'\u2713 Correct':'\u2715 Incorrect')+'</span>'+
+              '</div>'+
+              (qf.comment?'<div style="font-size:12px;color:var(--t1);line-height:1.5">'+esc(qf.comment)+'</div>':'')+
               '</div>';
-            });
-            feedbackHtml+='</div>';
-            if(fp.overall){
-              feedbackHtml+='<div style="font-size:13px;font-weight:600;color:var(--t0);margin-bottom:4px">Overall</div>'+
-                '<div style="font-size:13px;color:var(--t1);line-height:1.6">'+esc(fp.overall)+'</div>';
-            }
-          } else {
-            feedbackHtml='<div style="font-size:13px;color:var(--t1);line-height:1.6">'+esc(fp.overall||fb)+'</div>';
-          }
-        } else {
-          feedbackHtml='<div style="font-size:13px;color:var(--t1);line-height:1.6">'+esc(fb)+'</div>';
+          });
+          feedbackHtml+='</div>';
+        } else if(!overall){
+          feedbackHtml='<div style="font-size:13px;color:var(--t2);font-style:italic">No detailed feedback available for this lesson.</div>';
         }
       }catch(e){ feedbackHtml='<div style="font-size:13px;color:var(--t1)">'+esc(l.feedback||'')+'</div>'; }
 
@@ -1605,6 +1641,10 @@ async function generateLesson(){
     '- Write exactly '+qCount+' questions - this subject needs '+qCount+' questions to fill 25 minutes appropriately\n'+
     '- Questions must progress: start with recall, move to application, finish with analysis or evaluation\n'+
     '- For maths: every question must include actual numbers to calculate - not just explanations\n'+
+    '- For history: ALL questions must assess historical knowledge and thinking ONLY — causes, consequences, significance, chronology, change and continuity, similarity and difference, use of evidence. NEVER include arithmetic or calculations even if set in a historical context (e.g. do not ask "how many years ago was 1066" or "calculate the area of land"). Any numerical thinking must be purely about historical facts, not arithmetic.\n'+
+    '- For geography: ALL questions must assess geographical knowledge and understanding ONLY — processes, patterns, human and physical geography, place knowledge, environmental issues. NEVER include arithmetic or maths problems even in a geographical context.\n'+
+    '- For science: questions must test scientific understanding, reasoning and vocabulary. Avoid questions that are primarily arithmetic calculations — focus on explaining processes, making predictions, and applying scientific concepts.\n'+
+    '- For english: questions must test literacy skills only — comprehension, inference, language analysis, creative writing, vocabulary, grammar. Never include maths.\n'+
     '- NEVER ask the student to draw, sketch, create a diagram, use physical resources, or go outside\n'+
     '- ALL questions must be answerable by typing text - this is a digital app\n'+
     '- Use UK English spelling and UK context (pounds not dollars, UK places, UK curriculum)\n'+
@@ -1670,12 +1710,19 @@ async function submitLesson(){
   var qa=_qs.map(function(q,i){return 'Q'+(i+1)+': '+q+'\nAnswer: '+(answers[i]||'(no answer)');}).join('\n\n');
 
   var safeTitle=(lesson.title||'').replace(/'/g,'').replace(/"/g,'');
-  var mPrompt='You are a '+KS_MAP[S.activeChild.age]+' teacher marking a '+S.activeChild.age+'-year-old student\'s '+S.subject+' work.\n'+
-    'Lesson: '+safeTitle+'\n\n'+qa+'\n\n'+
-    'IMPORTANT: Respond ONLY with a single valid JSON object. No markdown, no explanation.\n'+
-    'CRITICAL: Do NOT use apostrophes or single quotes anywhere inside JSON string values. Reword to avoid them.\n'+
-    'Use only straight double-quotes for JSON structure.\n'+
-    '{"score":integer_marks_awarded,"max_score":'+maxSc+',"feedback":"150-250 words of specific warm constructive teacher feedback"}';
+  var mPrompt=
+    'You are an experienced UK '+KS_MAP[S.activeChild.age]+' teacher marking a '+S.activeChild.age+'-year-old student work in '+S.subject+'.\n'+
+    'Lesson title: '+safeTitle+'\n\n'+
+    qa+'\n\n'+
+    'MARKING INSTRUCTIONS:\n'+
+    '- Award 1 mark for a correct, sufficiently detailed answer. Award 0 for incorrect or too vague.\n'+
+    '- For EACH question write a separate 1-2 sentence comment: acknowledge what was right, then clearly state what was wrong or missing.\n'+
+    '- Be specific and honest - do not soften errors. If the answer is wrong, say it is wrong and explain why.\n'+
+    '- The per-question comments are shown to the CHILD so keep a warm but direct teacher tone.\n'+
+    '- The overall summary is shown to PARENTS so be frank and informative: summarise performance, highlight specific strengths and weaknesses, and give one or two concrete actions to improve.\n'+
+    '- Do NOT use apostrophes or single quotes inside any JSON string value. Reword contractions.\n'+
+    '- Respond ONLY with a valid JSON object. No markdown fences. No text outside the JSON.\n'+
+    '{"score":integer,"max_score":'+maxSc+',"question_feedback":[{"q":1,"mark":0or1,"comment":"teacher comment on Q1"},{"q":2,"mark":0or1,"comment":"teacher comment on Q2"}],"overall":"2-3 sentence honest parent-facing summary of performance, strengths and next steps"}';
 
   var mark=null;
   try{
