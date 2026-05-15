@@ -617,7 +617,64 @@ function checkBadges(){var n=[];BADGES.forEach(function(b){if(S.earnedBadges.ind
 function floatXP(amt,el){try{var r=el?el.getBoundingClientRect():{top:200,left:window.innerWidth/2,width:0};var d=document.createElement('div');d.className='xp-float';d.textContent='+'+amt+' XP';d.style.left=(r.left+r.width/2-20)+'px';d.style.top=(r.top+window.scrollY-10)+'px';document.body.appendChild(d);setTimeout(function(){d.remove();},1000);}catch(e){}}
 function showLevelUpModal(rank,badges){S.showLvlModal=true;S.lvlModalData={rank:rank,badges:badges};render();}
 function closeLvlModal(){S.showLvlModal=false;S.lvlModalData=null;render();}
+async function apiUpdateReadBooks(childId, readBooks) {
+  if (DB_MODE==='live') try {
+    await rpc('update_read_books',{p_child_id:childId, p_read_books:JSON.stringify(readBooks)});
+  } catch(e){ sbLog('apiUpdateReadBooks',e); }
+  if(S.activeChild&&S.activeChild.id===childId) S.activeChild.read_books=readBooks;
+  var ch=S.children.find(function(c){return c.id===childId;});
+  if(ch) ch.read_books=readBooks;
+}
+
 function setAvatar(i){S.avatar=i;saveGameState();render();}
+
+async function toggleBook(title){
+  var rb=S.activeChild&&S.activeChild.read_books?
+    (typeof S.activeChild.read_books==='string'?JSON.parse(S.activeChild.read_books||'[]'):S.activeChild.read_books):[];
+  var idx=rb.indexOf(title);
+  if(idx===-1) rb=rb.concat([title]);
+  else rb=rb.filter(function(b){return b!==title;});
+  await apiUpdateReadBooks(S.activeChild.id, rb);
+  render();
+}
+
+var ENGLISH_LESSON_TYPES = {
+  KS1:['Phonics and spelling patterns','Sentence writing and punctuation','Character description',
+    'Story retelling and sequencing','Simple poetry writing','Reading comprehension of a short passage',
+    'Adjectives and descriptive language','Writing instructions','Capital letters and full stops'],
+  KS2:['Reading comprehension and inference','Vocabulary in context','Persuasive writing techniques',
+    'Narrative writing and story structure','Poetry analysis and appreciation','Figurative language similes and metaphors',
+    'Non-fiction writing reports and explanations','Letter writing formal and informal',
+    'Grammar subordinate clauses and conjunctions','Punctuation commas colons and semicolons',
+    'Dialogue and speech punctuation','Character development in fiction',
+    'Comparing two texts','Newspaper report writing','Point Evidence Explain paragraph writing'],
+  KS3:['Analysing language techniques in fiction','Structural analysis of non-fiction texts',
+    'Persuasive writing argument and rhetoric','Creative writing opening a story',
+    'Poetry analysis unseen poem','Comparing writers perspectives',
+    'Context and themes in literature','Writing for different audiences and purposes',
+    'Grammar active and passive voice','Vocabulary etymology and word roots',
+    'Newspaper and media analysis','Dystopian fiction techniques','Gothic writing conventions',
+    'Dramatic techniques and stagecraft','Writing a speech'],
+  KS4:['Unseen poetry analysis','Comparing two literary extracts','Language and structure analysis',
+    'Writing to argue and persuade','Writing to describe',
+    'Context and its effect on meaning','Writers craft and intentions',
+    'Evaluating a texts effectiveness','Spoken language and rhetoric',
+    'Grammar and technical accuracy at GCSE level','19th century prose analysis',
+    'Modern prose and drama analysis','Writing a formal essay with PEE structure',
+    'Narrative voice and perspective']
+};
+
+function pickEnglishType(ks, childId, lessonCount) {
+  var rb=window._activeChildReadBooks||[];
+  var useBook=rb.length>0&&(lessonCount%5<2); // ~40% book lessons when books available
+  if(useBook){
+    var seed=Math.floor(Date.now()/86400000)*31+(lessonCount||0)*7+(childId?childId.charCodeAt(0):0);
+    return {type:'book', book:rb[seed%rb.length]};
+  }
+  var types=ENGLISH_LESSON_TYPES[ks]||ENGLISH_LESSON_TYPES.KS2;
+  var seed2=Math.floor(Date.now()/86400000)*17+(lessonCount||0)*11+(childId?childId.charCodeAt(0)+childId.charCodeAt(childId.length-1):0);
+  return {type:'topic', topic:types[seed2%types.length]};
+}
 
 
 /* ── UTILS ──────────────────────────────────────────────────────────────────── */
@@ -1022,6 +1079,20 @@ function buildSettings(){
   var ag=[5,6,7,8,9,10,11,12,13,14,15,16].map(function(a){
     return '<div class="age-btn '+(S.newChildAge===a?'sel':'')+'" onclick="S.newChildAge='+a+';render()">'+a+'<small>'+KS_MAP[a]+'</small></div>';
   }).join('');
+
+  // Book picker
+  var rb=S.activeChild&&S.activeChild.read_books?
+    (typeof S.activeChild.read_books==='string'?JSON.parse(S.activeChild.read_books||'[]'):S.activeChild.read_books):[];
+  var ks2=KS_MAP[S.activeChild?S.activeChild.age:10];
+  var allBooks=BOOKS[ks2]||BOOKS.KS2;
+  var bookRows=allBooks.map(function(b){
+    var read=rb.indexOf(b)!==-1;
+    return '<div onclick="toggleBook('+JSON.stringify(b)+')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r12);border:1.5px solid '+(read?'var(--g)':'var(--b0)')+';background:'+(read?'var(--gl)':'var(--s0)')+';cursor:pointer;transition:all .15s;margin-bottom:6px">'+
+      '<div style="width:20px;height:20px;border-radius:50%;border:2px solid '+(read?'var(--g)':'var(--b1)')+';background:'+(read?'var(--g)':'transparent')+';display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:11px;font-weight:700">'+(read?'\u2713':'')+' </div>'+
+      '<span style="font-size:13px;color:'+(read?'var(--gd)':'var(--t0)')+'">'+esc(b)+'</span>'+
+    '</div>';
+  }).join('');
+
   return '<div class="page-title">Settings</div>'+
   '<div class="set-section"><h3>Children</h3>'+rows+
   '<div class="divider"></div>'+
@@ -1029,6 +1100,11 @@ function buildSettings(){
   '<div class="field"><input id="new-nm" type="text" placeholder="Child\'s name" value="'+esc(S.newChildName)+'" oninput="S.newChildName=this.value"></div>'+
   '<div class="age-grid" style="margin-bottom:1rem">'+ag+'</div>'+
   '<button class="btn btn-green" onclick="addChild()">Add child</button></div>'+
+  '<div class="set-section"><h3>Books '+esc(S.activeChild?S.activeChild.name:'')+' has read</h3>'+
+  '<p style="font-size:12px;color:var(--t2);margin-bottom:12px;line-height:1.5">Tap to mark books as read. English lessons will use these books. If none are selected, English lessons will focus on curriculum topics instead.</p>'+
+  bookRows+
+  '<div style="font-size:12px;color:var(--t2);margin-top:4px">'+rb.length+' of '+allBooks.length+' books marked as read</div>'+
+  '</div>'+
   '<div class="set-section"><h3>Account</h3>'+
   '<div class="acct-email">'+esc(S.user?(S.user.email||''):'')+'</div>'+
   '<button class="btn btn-danger" onclick="doSignOut()">Sign out</button></div>';
@@ -1135,6 +1211,8 @@ async function switchChild(id){
   S.activeChild=S.children.find(function(c){return c.id===id;});
   S.todayLessons={}; S.history=[]; S.showModal=false; S.page='dashboard';
   loadGameState();
+  var fc=await apiChildren(S.user.id,S.token);
+  if(fc&&fc.length){S.children=fc;S.activeChild=fc.find(function(c){return c.id===S.activeChild.id;})||fc[0];}
   await Promise.all([loadTodayLessons(),loadHistory()]); render();
 }
 
@@ -1143,7 +1221,7 @@ async function generateLesson(){
   var c=S.activeChild, ks=KS_MAP[c.age], key=S.subject+'_'+S.part;
   var pn=S.part==='L1'?1:2, isEng=S.subject==='english', _engCount=S.history.filter(function(h){return h.lesson.subject==='english';}).length, book=isEng?pickBook(ks,c.id,_engCount):'';
 
-  var safeBook=book.replace(/'/g,'').replace(/"/g,'');
+  var safeBook=isBookLesson?book.replace(/'/g,'').replace(/"/g,''):'';
 
   // Build recent topic history to avoid repetition
   var recentTopics=S.history
@@ -1192,7 +1270,8 @@ async function generateLesson(){
 
   var prompt=
     'You are an expert UK '+ks+' teacher creating a '+S.subject+' lesson for a '+c.age+'-year-old in Year '+(c.age-4)+'.\n'+
-    (isEng?'BOOK FOR THIS LESSON: '+safeBook+'. Focus on comprehension, vocabulary, themes, inference, or creative writing inspired by this book.\n':'')+
+    (isBookLesson?'BOOK FOR THIS LESSON: '+safeBook+'. The child has read this book. Focus on comprehension, vocabulary, themes, inference, or creative writing inspired by it.\n':'')+
+    (engTopic?'ENGLISH TOPIC FOR THIS LESSON: '+engTopic+'. This is NOT a book lesson. Teach this topic directly with clear explanation, examples, and practice questions.\n':'')+
     (recentTopics?'TOPICS ALREADY COVERED RECENTLY - choose a DIFFERENT topic: '+recentTopics+'\n':'')+
     'CURRICULUM AREAS FOR THIS SUBJECT ('+ks+'): '+curriculumHint+'\n'+
     'LESSON '+pn+' OF 2.'+(pn===2?' This lesson MUST build directly on Lesson 1 with greater depth and challenge.':'')+' \n'+
@@ -1230,7 +1309,7 @@ async function generateLesson(){
     if(!txt) throw new Error('Empty response from AI');
     console.log('[generateLesson] txt:',txt.slice(0,200));
     lesson=extractJSON(txt);
-    lesson.book_title=isEng?safeBook:null;
+    lesson.book_title=isBookLesson?safeBook:null;
   }catch(e){
     console.error('generateLesson:',e);
     lesson={title:'Generation failed',content:'Could not generate lesson. Please go back and try again.',questions:[],youtube_query:'',book_title:null};
