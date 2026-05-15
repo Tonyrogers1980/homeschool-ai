@@ -738,14 +738,14 @@ function buildAuth(){
   var h='<div class="auth-page">';
   h+='<div class="auth-brand"><div class="wordmark">Home<em>School</em> AI</div><p>A personalised AI teacher for every child</p></div>';
   h+='<div class="auth-box">';
-  h+='<div class="tab-row"><div class="tab-pill '+(lg?'on':'')+'" onclick="setMode(\'login\')">Sign in</div><div class="tab-pill '+(!lg?'on':'')+'" onclick="setMode(\'signup\')">Create account</div></div>';
+  h+='<div class="tab-row"><div class="tab-pill '+(lg?'on':'')+'" onclick=\"setMode(\x27login\x27)\">Sign in</div><div class="tab-pill '+(!lg?'on':'')+'" onclick=\"setMode(\x27signup\x27)\">Create account</div></div>';
   if(S.authErr) h+='<div class="msg msg-err">'+esc(S.authErr)+'</div>';
   if(S.authOk)  h+='<div class="msg msg-ok">'+esc(S.authOk)+'</div>';
   if(!lg) h+='<div class="field"><label>Your name</label><input id="a-name" type="text" placeholder="e.g. Sarah Johnson"></div>';
   h+='<div class="field"><label>Email</label><input id="a-email" type="email" placeholder="you@example.com"></div>';
   h+='<div class="field"><label>Password</label><input id="a-pass" type="password" placeholder="'+(lg?'Your password':'At least 6 characters')+'"></div>';
   h+='<button class="btn btn-green" id="a-btn" onclick="doAuth()">'+(lg?'Sign in':'Create account')+'</button>';
-  if(lg) h+='<div class="auth-footer">No account? <a onclick="setMode(\'signup\')">Sign up free</a></div>';
+  if(lg) h+='<div class="auth-footer">No account? <a onclick=\"setMode(\x27signup\x27)\">Sign up free</a></div>';
   h+='<div class="offline-note" id="sb-status"><div class="offline-dot" id="sb-dot"></div><span id="sb-lbl">Checking Supabase…</span></div>';
   setTimeout(checkSbConn, 400);
   h+='</div></div>';
@@ -753,6 +753,7 @@ function buildAuth(){
 }
 
 function setMode(m){ S.authMode=m; S.authErr=''; S.authOk=''; render(); }
+function setModeN(n){setMode(n===0?'login':'signup');}
 
 async function ensureProfile(user, tok) {
   if (DB_MODE !== 'live' || !user || !user.id) return;
@@ -807,16 +808,20 @@ function buildNav(){
     {id:'history',  lbl:'History', p:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z"/>'},
     {id:'settings', lbl:'Settings',p:'<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281a7.5 7.5 0 011.5.866l1.198-.497a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827a7.535 7.535 0 010 1.729l1.003.827c.43.355.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.198-.497a7.5 7.5 0 01-1.5.866l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.02-.397-1.11-.94l-.213-1.281a7.5 7.5 0 01-1.5-.866l-1.198.497a1.125 1.125 0 01-1.37-.49l-1.296-2.248a1.125 1.125 0 01.26-1.431l1.004-.827a7.535 7.535 0 010-1.729L3.42 10.9a1.125 1.125 0 01-.26-1.43L4.456 7.22a1.125 1.125 0 011.37-.491l1.198.497a7.5 7.5 0 011.5-.866l.213-1.281z"/><circle cx="12" cy="12" r="3" stroke-width="1.5" stroke-linecap="round"/>'}
   ];
-  var tabs=defs.map(function(d){
-    return '<button class="nitem '+(S.page===d.id?'on':'')+'" onclick=\"navTo(\\\''+d.id+'\\\')">'+
-      '<svg viewBox="0 0 24 24" fill="none">'+d.p+'</svg>'+d.lbl+'</button>';
-  }).join('');
-  var xpBar='<div style="padding:4px 12px 0;background:var(--s0);border-top:1px solid var(--b0)">'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">'+
-    '<span style="font-size:10px;font-weight:700;color:'+rank.color+'">'+AVATARS[S.avatar]+' '+rank.name+'</span>'+
-    '<span style="font-size:10px;color:var(--t2)">'+S.xp+' XP'+(next?' / '+next.min:'')+
-    '</span></div><div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:'+pct+'%"></div></div></div>';
-  return '<div class="bnav" style="flex-direction:column">'+xpBar+'<div style="display:flex">'+tabs+'</div></div>';
+  var html='<div class="bnav" style="flex-direction:column">';
+  html+='<div style="padding:4px 12px 0;background:var(--s0);border-top:1px solid var(--b0)">';
+  html+='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">';
+  html+='<span style="font-size:10px;font-weight:700;color:'+rank.color+'">'+AVATARS[S.avatar]+' '+rank.name+'</span>';
+  html+='<span style="font-size:10px;color:var(--t2)">'+S.xp+' XP'+(next?' / '+next.min:'')+' </span>';
+  html+='</div><div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:'+pct+'%"></div></div></div>';
+  html+='<div style="display:flex">';
+  for(var i=0;i<defs.length;i++){
+    var d=defs[i];
+    html+='<button class="nitem '+(S.page===d.id?'on':'')+'" onclick=\"navTo(this.getAttribute(\x27data-p\x27))\" data-p="'+d.id+'">';
+    html+='<svg viewBox="0 0 24 24" fill="none">'+d.p+'</svg>'+d.lbl+'</button>';
+  }
+  html+='</div></div>';
+  return html;
 }
 
 /* ── ONBOARD ────────────────────────────────────────────────────────────────── */
@@ -866,7 +871,7 @@ function buildDash(){
     var l1=tl[s.id+'_L1'],l2=tl[s.id+'_L2'];
     var d1=!!(l1&&l1.marking),d2=!!(l2&&l2.marking);
     var prg=d1&&d2?'Both lessons complete \u2713':d1?'L1 done \u2014 ready for L2':'Start today\'s lesson';
-    return '<div class="subj-card '+s.id+'" onclick="openSubject(\''+s.id+'\')">'+
+    return '<div class="subj-card '+s.id+'" onclick=\"openSubject(this.getAttribute(\x27data-s\x27))\" data-s="'+s.id+'">'+
       (d1&&d2?'<div class="done-check">\u2713</div>':'')+
       '<span class="s-ico">'+s.icon+'</span>'+
       '<div class="s-name">'+s.label+'</div>'+
@@ -915,7 +920,7 @@ function buildLesson(){
   var ptabs=['L1','L2'].map(function(p,i){
     var pd=!!(S.todayLessons[S.subject+'_'+p]&&S.todayLessons[S.subject+'_'+p].marking);
     var dis=(p==='L2'&&!l1done)?'disabled':'';
-    return '<button class="ppill '+(S.part===p?'on':'')+(pd?' done':'')+'" '+dis+' onclick="setPart(\''+p+'\')">'+(pd?'\u2713 ':'')+
+    return '<button class="ppill '+(S.part===p?'on':'')+(pd?' done':'')+'" '+dis+' onclick=\"setPart(this.getAttribute(\x27data-p\x27))\" data-p="'+p+'">'+(pd?'\u2713 ':'')+
       'Lesson '+(i+1)+(p==='L2'&&!l1done?' (finish L1 first)':'')+'</button>';
   }).join('');
 
@@ -924,7 +929,7 @@ function buildLesson(){
   else if(entry.lesson) body=buildActive(entry.lesson);
   else { body='<div class="lcard"><div class="spin-state"><div class="spin"></div>Generating your '+subj.label+' lesson\u2026</div></div>'; setTimeout(generateLesson,80); }
 
-  return '<div class="lesson-nav"><button class="back-btn" onclick="navTo(\'dashboard\')">\u2190 Back</button>'+
+  return '<div class="lesson-nav"><button class="back-btn" onclick=\"navTo(\x27dashboard\x27)\">\u2190 Back</button>'+
     '<div class="lesson-meta"><h2>'+subj.icon+' '+subj.label+'</h2><p>'+ks+' \u00b7 Age '+c.age+'</p></div></div>'+
     '<div class="part-pills">'+ptabs+'</div><div id="lbody">'+body+'</div>';
 }
@@ -1062,7 +1067,7 @@ function buildHistory(){
     byDate[d].forEach(function(en){
       var l=en.lesson,m=en.marking,sub=SUBJECTS.find(function(s){return s.id===l.subject;});
       var pct=m.max_score>0?Math.round(m.score/m.max_score*100):0;
-      h+='<li class="hist-item" onclick="reviewLesson(\''+l.subject+'\',\''+l.part+'\')">'+
+      h+='<li class="hist-item" onclick="reviewLesson(\x27+l.subject+\x27,\x27+l.part+\x27)">'+
         '<div class="hi-dot" style="background:'+subClr(l.subject)+'"></div>'+
         '<div class="hi-info"><div class="hi-title">'+(sub?sub.icon+' '+sub.label:l.subject)+' \u2014 '+l.part+'</div>'+
         '<div class="hi-meta">'+esc(l.title)+'</div></div>'+
@@ -1079,7 +1084,7 @@ function buildSettings(){
     var active=S.activeChild&&S.activeChild.id===ch.id;
     return '<div class="child-row"><div class="av">'+ini(ch.name)+'</div>'+
       '<div style="flex:1"><strong>'+esc(ch.name)+'</strong> \u00b7 Age '+ch.age+' \u00b7 '+KS_MAP[ch.age]+'</div>'+
-      (active?'<span style="font-size:12px;font-weight:600;color:var(--g)">Active</span>':'<button class="btn btn-ghost btn-sm" onclick="switchChild(\''+ch.id+'\')">Switch</button>')+
+      (active?'<span style="font-size:12px;font-weight:600;color:var(--g)">Active</span>':'<button class="btn btn-ghost btn-sm" onclick="switchChild(\x27+ch.id+\x27)">Switch</button>')+
     '</div>';
   }).join('');
   var ag=[5,6,7,8,9,10,11,12,13,14,15,16].map(function(a){
@@ -1122,7 +1127,7 @@ function buildSettings(){
 function buildModal(){
   var items=S.children.map(function(c){
     var on=S.activeChild&&S.activeChild.id===c.id;
-    return '<li class="'+(on?'on':'')+'" onclick="switchChild(\''+c.id+'\')">'+
+    return '<li class="'+(on?'on':'')+'" onclick="switchChild(\x27+c.id+\x27)">'+
       '<div class="av">'+ini(c.name)+'</div>'+
       '<div><strong>'+esc(c.name)+'</strong><br><span style="font-size:12px;color:var(--t2)">Age '+c.age+' \u00b7 '+KS_MAP[c.age]+'</span></div>'+
       (on?'<span style="margin-left:auto;color:var(--g);font-weight:700">\u2713</span>':'')+
