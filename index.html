@@ -646,41 +646,40 @@ async function doSignup() {
   showAuthErr('Check your email for a confirmation link, then sign in.');
   btn.disabled=false; btn.textContent='Start free trial →';
 }
-// ── Robust uid/email helpers — handles all Supabase session shapes ──
+// ── Robust uid/email helpers ──
+// Supabase password grant shape: { access_token, refresh_token, user: { id, email, user_metadata } }
 function getUid() {
-  const u = S.user;
-  if(!u) return null;
-  if(u.user && u.user.id) return u.user.id;   // password grant: {user:{id,...}}
-  if(u.id) return u.id;                         // restored session or user object
+  if(!S.user) return null;
+  // Standard shape from password grant or refresh
+  if(S.user.user && S.user.user.id) return S.user.user.id;
   return null;
 }
 function getEmail() {
-  const u = S.user;
-  if(!u) return '';
-  return (u.user && u.user.email) ? u.user.email : (u.email || '');
+  if(!S.user) return '';
+  if(S.user.user && S.user.user.email) return S.user.user.email;
+  return '';
 }
 function getDisplayName() {
-  const u = S.user;
-  if(!u) return '';
-  const meta = (u.user && u.user.user_metadata) ? u.user.user_metadata : (u.user_metadata || {});
+  if(!S.user) return '';
+  const meta = S.user.user && S.user.user.user_metadata ? S.user.user.user_metadata : {};
   return meta.full_name || '';
 }
 
 async function onSession(session) {
+  // Supabase password grant returns {access_token, refresh_token, user:{id,email,...}, ...}
+  // Store the whole thing — boot() will use refresh_token to renew on next load
   S.user = session;
   localStorage.setItem('bp_session', JSON.stringify(session));
   await ensureProfile();
-  showApp();
+  await showApp();
 }
 async function ensureProfile() {
   try {
     const uid = getUid();
-    console.log('[ensureProfile] uid:', uid);
-    if(!uid) { console.warn('[ensureProfile] no uid — aborting'); return; }
+    if(!uid) return;
     const email = getEmail();
     const name = getDisplayName();
     const existing = await sbGet('profiles', 'id=eq.' + uid);
-    console.log('[ensureProfile] existing profiles:', existing ? existing.length : 'null');
     if(!existing || !existing.length) {
       await sbPost('profiles', {id:uid, email, full_name:name, subscription_status:'trial', trial_started_at:new Date().toISOString()});
     } else {
@@ -688,7 +687,6 @@ async function ensureProfile() {
     }
     const profiles = await sbGet('profiles', 'id=eq.' + uid);
     S.profile = profiles[0] || null;
-    console.log('[ensureProfile] profile loaded:', S.profile ? 'yes' : 'null');
   } catch(e) { console.warn('[ensureProfile] error:', e.message); }
 }
 function doLogout() {
@@ -714,12 +712,10 @@ async function showApp() {
 async function loadChildren() {
   try {
     const uid = getUid();
-    console.log('[loadChildren] uid:', uid);
-    if(!uid) { console.warn('[loadChildren] no uid — aborting'); S.children=[]; return; }
+    if(!uid) { S.children=[]; return; }
     const rows = await sbGet('children', 'user_id=eq.' + uid + '&order=created_at.asc');
-    console.log('[loadChildren] rows returned:', rows ? rows.length : 'null', rows);
     S.children = rows || [];
-  } catch(e) { console.error('[loadChildren] error:', e.message); S.children=[]; }
+  } catch(e) { S.children=[]; }
 }
 async function loadHomeData() {
   if(!S.activeChild) return;
@@ -1539,37 +1535,32 @@ function toast(msg, duration=2800) {
 // BOOT
 // ══════════════════════════════════════════════════
 async function boot() {
-  const saved=localStorage.getItem('bp_session');
+  // Always clear any stale/malformed session from older app versions
+  const saved = localStorage.getItem('bp_session');
   if(saved) {
     try {
-      const session=JSON.parse(saved);
-      console.log('[boot] saved session keys:', Object.keys(session));
-      console.log('[boot] access_token present:', !!session.access_token);
-      console.log('[boot] refresh_token present:', !!session.refresh_token);
-
-      if(session.refresh_token) {
-        // Always use refresh_token — it lasts 60 days and gives us a fresh access_token
+      const session = JSON.parse(saved);
+      // Only trust sessions that have both tokens (Supabase standard shape)
+      if(session.access_token && session.refresh_token) {
+        // Use refresh_token to get a fresh access_token (access tokens expire in 1hr)
         const r = await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
           method:'POST',
           headers:{'Content-Type':'application/json','apikey':SB_KEY},
           body: JSON.stringify({refresh_token: session.refresh_token})
         });
         const refreshed = await r.json();
-        console.log('[boot] refresh response keys:', Object.keys(refreshed));
-        if(refreshed.access_token) {
+        if(refreshed.access_token && refreshed.user) {
           S.user = refreshed;
-          console.log('[boot] refresh success, uid:', getUid());
           localStorage.setItem('bp_session', JSON.stringify(refreshed));
           await ensureProfile();
           await showApp();
           return;
         }
-        console.warn('[boot] refresh failed:', refreshed.error || refreshed);
       }
     } catch(e){ console.warn('[boot] restore error:', e); }
+    // Stale/invalid session — clear it
     localStorage.removeItem('bp_session');
   }
-  console.log('[boot] showing auth page');
   document.getElementById('authPage').style.display='flex';
 }
 boot();
