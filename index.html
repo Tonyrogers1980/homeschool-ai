@@ -285,6 +285,7 @@ label { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: 
         <input type="password" id="loginPass" placeholder="••••••••">
       </div>
       <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()">Sign in →</button>
+      <p style="text-align:center;margin-top:10px"><a href="#" onclick="doForgotPassword()" style="font-size:13px;color:var(--muted)">Forgot password?</a></p>
     </div>
     <div id="signupForm" style="display:none">
       <div class="form-group">
@@ -476,7 +477,7 @@ label { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: 
 // CONFIG
 // ══════════════════════════════════════════════════
 const SB_URL = 'https://lagrgcbhkpihxqsjkmlv.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZ3JnY2Joa3BpaHhxc2prbWx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwNTUwMDgsImV4cCI6MjA2MjYzMTAwOH0.YUHaHYiJaHvHFQq8q4V9PW7FI0cpJJyiKjX_aobdHt0';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhZ3JnY2Joa3BpaHhxc2prbWx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1NzYwOTQsImV4cCI6MjA5NDE1MjA5NH0.cGDgY80q6YL6pycCipe2kce-GHtkdIsF7sGFjmpNnng';
 const AI_URL = 'https://api.anthropic.com/v1/messages';
 
 // ── YOUTUBE CHANNEL WHITELIST ──────────────────────
@@ -618,6 +619,22 @@ async function sbUpsert(table, data, onConflict) {
 // ══════════════════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════════════════
+async function doForgotPassword() {
+  const email = document.getElementById('loginEmail').value.trim();
+  if(!email) { showAuthErr('Enter your email address first'); return; }
+  const r = await fetch(SB_URL+'/auth/v1/recover', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SB_KEY},
+    body: JSON.stringify({email})
+  });
+  if(r.ok) {
+    document.getElementById('authErr').style.display='';
+    document.getElementById('authErr').style.color='var(--success)';
+    document.getElementById('authErr').textContent='Password reset email sent! Check your inbox.';
+  } else {
+    showAuthErr('Could not send reset email');
+  }
+}
 function switchAuthTab(tab) {
   document.querySelectorAll('.auth-tab').forEach((t,i)=>t.classList.toggle('active', (i===0&&tab==='login')||(i===1&&tab==='signup')));
   document.getElementById('loginForm').style.display = tab==='login'?'':'none';
