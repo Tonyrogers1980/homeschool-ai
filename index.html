@@ -630,7 +630,16 @@ async function doLogin() {
   if(!email||!pass) return showAuthErr('Please fill in all fields');
   const btn=document.querySelector('#loginForm .btn'); btn.disabled=true; btn.textContent='Signing in…';
   const d = await sbAuth('token?grant_type=password',{email,password:pass});
-  if(d.error) { showAuthErr(d.error_description||d.error); btn.disabled=false; btn.textContent='Sign in →'; return; }
+  if(d.error || !d.access_token) { 
+    showAuthErr(d.error_description||d.error||'Login failed'); 
+    btn.disabled=false; btn.textContent='Sign in →'; 
+    return; 
+  }
+  if(!d.user || !d.user.id) {
+    showAuthErr('Session error — please try again');
+    btn.disabled=false; btn.textContent='Sign in →';
+    return;
+  }
   await onSession(d);
 }
 async function doSignup() {
@@ -666,8 +675,6 @@ function getDisplayName() {
 }
 
 async function onSession(session) {
-  // Supabase password grant returns {access_token, refresh_token, user:{id,email,...}, ...}
-  // Store the whole thing — boot() will use refresh_token to renew on next load
   S.user = session;
   localStorage.setItem('bp_session', JSON.stringify(session));
   await ensureProfile();
@@ -712,36 +719,10 @@ async function showApp() {
 async function loadChildren() {
   try {
     const uid = getUid();
-    // Temporary debug — remove after fix
-    const debugInfo = {
-      uid: uid,
-      userKeys: S.user ? Object.keys(S.user) : 'null',
-      hasUser: !!(S.user && S.user.user),
-      userId: S.user && S.user.user ? S.user.user.id : 'missing',
-      token: S.user ? (S.user.access_token||'').substring(0,20)+'...' : 'null'
-    };
-    console.log('[loadChildren] debug:', JSON.stringify(debugInfo));
-    document.title = 'uid:' + uid; // visible in tab
-    if(!uid) { 
-      S.children=[];
-      // Show visible error on screen
-      const g = document.getElementById('subjectGrid');
-      if(g) g.innerHTML = '<div style="color:red;padding:10px;font-size:12px">DEBUG: uid is null. userKeys=' + debugInfo.userKeys + ' userId=' + debugInfo.userId + '</div>';
-      return; 
-    }
-    const url = 'user_id=eq.' + uid + '&order=created_at.asc';
-    const rows = await sbGet('children', url);
-    console.log('[loadChildren] query:', url, 'rows:', rows ? rows.length : 'null', rows);
-    if(rows && rows.length === 0) {
-      // Show visible debug on screen
-      const g = document.getElementById('heroSub');
-      if(g) g.textContent = 'DEBUG: uid=' + uid + ' rows=0 (RLS blocking?)';
-    }
+    if(!uid) { S.children=[]; return; }
+    const rows = await sbGet('children', 'user_id=eq.' + uid + '&order=created_at.asc');
     S.children = rows || [];
-  } catch(e) { 
-    console.error('[loadChildren] error:', e);
-    S.children=[]; 
-  }
+  } catch(e) { S.children=[]; }
 }
 async function loadHomeData() {
   if(!S.activeChild) return;
@@ -1561,30 +1542,36 @@ function toast(msg, duration=2800) {
 // BOOT
 // ══════════════════════════════════════════════════
 async function boot() {
-  // Always clear any stale/malformed session from older app versions
   const saved = localStorage.getItem('bp_session');
   if(saved) {
     try {
       const session = JSON.parse(saved);
-      // Only trust sessions that have both tokens (Supabase standard shape)
-      if(session.access_token && session.refresh_token) {
-        // Use refresh_token to get a fresh access_token (access tokens expire in 1hr)
+      // Try refresh first if we have a refresh_token
+      if(session.refresh_token) {
         const r = await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
           method:'POST',
           headers:{'Content-Type':'application/json','apikey':SB_KEY},
           body: JSON.stringify({refresh_token: session.refresh_token})
         });
         const refreshed = await r.json();
-        if(refreshed.access_token && refreshed.user) {
+        // Must have access_token AND user.id to be a valid session
+        if(refreshed.access_token && refreshed.user && refreshed.user.id) {
           S.user = refreshed;
           localStorage.setItem('bp_session', JSON.stringify(refreshed));
           await ensureProfile();
           await showApp();
           return;
         }
+        console.warn('[boot] refresh failed, response:', JSON.stringify(refreshed));
+      }
+      // Try using access_token directly if it's still valid
+      if(session.access_token && session.user && session.user.id) {
+        S.user = session;
+        await ensureProfile();
+        await showApp();
+        return;
       }
     } catch(e){ console.warn('[boot] restore error:', e); }
-    // Stale/invalid session — clear it
     localStorage.removeItem('bp_session');
   }
   document.getElementById('authPage').style.display='flex';
