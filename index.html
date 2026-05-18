@@ -675,11 +675,12 @@ async function onSession(session) {
 async function ensureProfile() {
   try {
     const uid = getUid();
-    if(!uid) { console.warn('ensureProfile: no uid found in session'); return; }
+    console.log('[ensureProfile] uid:', uid);
+    if(!uid) { console.warn('[ensureProfile] no uid — aborting'); return; }
     const email = getEmail();
     const name = getDisplayName();
-    // Only INSERT if profile missing — never overwrite trial_started_at on existing accounts
     const existing = await sbGet('profiles', 'id=eq.' + uid);
+    console.log('[ensureProfile] existing profiles:', existing ? existing.length : 'null');
     if(!existing || !existing.length) {
       await sbPost('profiles', {id:uid, email, full_name:name, subscription_status:'trial', trial_started_at:new Date().toISOString()});
     } else {
@@ -687,7 +688,8 @@ async function ensureProfile() {
     }
     const profiles = await sbGet('profiles', 'id=eq.' + uid);
     S.profile = profiles[0] || null;
-  } catch(e) { console.warn('Profile warn:', e.message); }
+    console.log('[ensureProfile] profile loaded:', S.profile ? 'yes' : 'null');
+  } catch(e) { console.warn('[ensureProfile] error:', e.message); }
 }
 function doLogout() {
   localStorage.removeItem('bp_session');
@@ -712,10 +714,12 @@ async function showApp() {
 async function loadChildren() {
   try {
     const uid = getUid();
-    if(!uid) { S.children=[]; return; }
+    console.log('[loadChildren] uid:', uid);
+    if(!uid) { console.warn('[loadChildren] no uid — aborting'); S.children=[]; return; }
     const rows = await sbGet('children', 'user_id=eq.' + uid + '&order=created_at.asc');
+    console.log('[loadChildren] rows returned:', rows ? rows.length : 'null', rows);
     S.children = rows || [];
-  } catch(e) { S.children=[]; }
+  } catch(e) { console.error('[loadChildren] error:', e.message); S.children=[]; }
 }
 async function loadHomeData() {
   if(!S.activeChild) return;
@@ -1539,22 +1543,33 @@ async function boot() {
   if(saved) {
     try {
       const session=JSON.parse(saved);
-      if(session.access_token) {
-        S.user=session;
-        // Re-fetch the user object so we always have a fresh {user:{id,...}} shape
-        const r=await fetch(SB_URL+'/auth/v1/user',{headers:{Authorization:'Bearer '+session.access_token,apikey:SB_KEY}});
-        if(r.ok) {
-          const userData = await r.json();
-          // Merge fresh user data into session so getUid() always works
-          S.user = Object.assign({}, session, {user: userData});
+      console.log('[boot] saved session keys:', Object.keys(session));
+      console.log('[boot] access_token present:', !!session.access_token);
+      console.log('[boot] refresh_token present:', !!session.refresh_token);
+
+      if(session.refresh_token) {
+        // Always use refresh_token — it lasts 60 days and gives us a fresh access_token
+        const r = await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','apikey':SB_KEY},
+          body: JSON.stringify({refresh_token: session.refresh_token})
+        });
+        const refreshed = await r.json();
+        console.log('[boot] refresh response keys:', Object.keys(refreshed));
+        if(refreshed.access_token) {
+          S.user = refreshed;
+          console.log('[boot] refresh success, uid:', getUid());
+          localStorage.setItem('bp_session', JSON.stringify(refreshed));
           await ensureProfile();
-          showApp();
+          await showApp();
           return;
         }
+        console.warn('[boot] refresh failed:', refreshed.error || refreshed);
       }
-    } catch(e){ console.warn('Boot restore error:', e); }
+    } catch(e){ console.warn('[boot] restore error:', e); }
     localStorage.removeItem('bp_session');
   }
+  console.log('[boot] showing auth page');
   document.getElementById('authPage').style.display='flex';
 }
 boot();
