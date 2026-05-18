@@ -712,10 +712,36 @@ async function showApp() {
 async function loadChildren() {
   try {
     const uid = getUid();
-    if(!uid) { S.children=[]; return; }
-    const rows = await sbGet('children', 'user_id=eq.' + uid + '&order=created_at.asc');
+    // Temporary debug — remove after fix
+    const debugInfo = {
+      uid: uid,
+      userKeys: S.user ? Object.keys(S.user) : 'null',
+      hasUser: !!(S.user && S.user.user),
+      userId: S.user && S.user.user ? S.user.user.id : 'missing',
+      token: S.user ? (S.user.access_token||'').substring(0,20)+'...' : 'null'
+    };
+    console.log('[loadChildren] debug:', JSON.stringify(debugInfo));
+    document.title = 'uid:' + uid; // visible in tab
+    if(!uid) { 
+      S.children=[];
+      // Show visible error on screen
+      const g = document.getElementById('subjectGrid');
+      if(g) g.innerHTML = '<div style="color:red;padding:10px;font-size:12px">DEBUG: uid is null. userKeys=' + debugInfo.userKeys + ' userId=' + debugInfo.userId + '</div>';
+      return; 
+    }
+    const url = 'user_id=eq.' + uid + '&order=created_at.asc';
+    const rows = await sbGet('children', url);
+    console.log('[loadChildren] query:', url, 'rows:', rows ? rows.length : 'null', rows);
+    if(rows && rows.length === 0) {
+      // Show visible debug on screen
+      const g = document.getElementById('heroSub');
+      if(g) g.textContent = 'DEBUG: uid=' + uid + ' rows=0 (RLS blocking?)';
+    }
     S.children = rows || [];
-  } catch(e) { S.children=[]; }
+  } catch(e) { 
+    console.error('[loadChildren] error:', e);
+    S.children=[]; 
+  }
 }
 async function loadHomeData() {
   if(!S.activeChild) return;
