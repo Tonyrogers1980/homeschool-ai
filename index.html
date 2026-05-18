@@ -725,7 +725,6 @@ function renderHome() {
   const c = S.activeChild;
   if(!c) return;
   const hour = new Date().getHours();
-  const greet = hour<12?'Good morning':'hour<17?''Good afternoon':'Good evening';
   const finalGreet = hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
   document.getElementById('heroName').textContent = `${finalGreet}, ${c.name}! 👋`;
   document.getElementById('heroSub').textContent = `${c.key_stage} · ${ageLabel(c.age)} · Let's learn something amazing!`;
@@ -865,7 +864,7 @@ async function openSubject(subjectId) {
     const markings = markingIds.length ? await getMarkings(markingIds) : [];
     list.innerHTML = renderLessonList(subjectId, l1, l2, markings);
   } catch(e) {
-    list.innerHTML = '<div class="empty-state"><span class="icon">⚠️</span><p>Couldn't load lessons. Check connection.</p></div>';
+    list.innerHTML = '<div class="empty-state"><span class="icon">⚠\uFE0F</span><p>Could not load lessons. Check connection.</p></div>';
   }
 }
 function renderLessonList(subjectId, l1, l2, markings) {
@@ -939,7 +938,7 @@ function buildLessonPrompt(subjectId, part, child) {
   const name = child.name;
   const isL2 = part==='L2';
   const subjLabel = SUBJECTS.find(s=>s.id===subjectId)?.label;
-  const readBooks = (child.read_books||[]).join(', ') || 'any popular children's books';
+  const readBooks = (child.read_books||[]).join(', ') || 'any popular childrens books';
   const englishTypes = ['book comprehension','persuasive writing','poetry analysis','grammar and punctuation','narrative writing','unseen text comprehension','argument writing','vocabulary and spelling'];
   const englishType = englishTypes[Math.floor(Math.random()*englishTypes.length)];
   const topicMap = {
@@ -1039,7 +1038,7 @@ function markWatched(btn, url) {
 async function videoFeedback(helpful, url) {
   if(!S.activeChild) return;
   try { await sbPost('video_feedback',{child_id:S.activeChild.id,youtube_url:url,helpful}); } catch(e){}
-  toast(helpful?'Thanks! 👍':'Noted, we'll improve the videos');
+  toast(helpful?'Thanks! 👍':'Noted, we will improve the videos');
 }
 function openVideo(url) { window.open(url,'_blank'); }
 
@@ -1336,7 +1335,7 @@ async function renderProgress() {
       }).join('')}
     </div>`;
   } catch(e) {
-    body.innerHTML='<div class="empty-state"><span class="icon">⚠️</span><p>Couldn't load progress</p></div>';
+    body.innerHTML='<div class="empty-state"><span class="icon">⚠\uFE0F</span><p>Could not load progress</p></div>';
   }
 }
 
