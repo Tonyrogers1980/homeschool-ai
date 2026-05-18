@@ -567,7 +567,17 @@ async function apiGetSub(lid, tok) {
 }
 async function apiAddMark(o, tok) {
   if (DB_MODE==='live') try {
-    var d = await rpc('insert_marking',{p_submission_id:o.submission_id,p_lesson_id:o.lesson_id,p_score:o.score,p_max_score:o.max_score,p_feedback:o.feedback});
+    // Build feedback JSON string from structured fields
+    var feedbackStr;
+    if(o.question_feedback||o.overall){
+      feedbackStr=JSON.stringify({
+        question_feedback:o.question_feedback||[],
+        overall:o.overall||o.feedback||''
+      });
+    } else {
+      feedbackStr=o.feedback||'';
+    }
+    var d = await rpc('insert_marking',{p_submission_id:o.submission_id,p_lesson_id:o.lesson_id,p_score:parseInt(o.score)||0,p_max_score:parseInt(o.max_score)||1,p_feedback:feedbackStr});
     return d;
   } catch(e){ sbLog('apiAddMark',e); return LDB.addMark(o); }
   return LDB.addMark(o);
@@ -1735,7 +1745,7 @@ async function submitLesson(){
   var mark=null;
   try{
     var res=await fetch(AIURL,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt:mPrompt,max_tokens:800})});
+      body:JSON.stringify({prompt:mPrompt,max_tokens:1500})});
     var data=await res.json();
     console.log('[submitLesson] status:',res.status,'data:',JSON.stringify(data).slice(0,200));
     if(!res.ok) throw new Error('Proxy error '+res.status);
