@@ -580,7 +580,26 @@ const LDB = { profiles:{}, children:{}, lessons:{}, submissions:{}, markings:{} 
 // ══════════════════════════════════════════════════
 // SUPABASE HELPERS
 // ══════════════════════════════════════════════════
-async function sbFetch(path, opts={}) {
+async function refreshSession() {
+  try {
+    const session = S.user;
+    if(!session || !session.refresh_token) return false;
+    const r = await fetch(SB_URL+'/auth/v1/token?grant_type=refresh_token', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SB_KEY},
+      body: JSON.stringify({refresh_token: session.refresh_token})
+    });
+    const refreshed = await r.json();
+    if(refreshed.access_token && refreshed.user && refreshed.user.id) {
+      S.user = refreshed;
+      localStorage.setItem('bp_session', JSON.stringify(refreshed));
+      return true;
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function sbFetch(path, opts={}, isRetry=false) {
   const token = S.user?.access_token || '';
   try {
     const r = await fetch(`${SB_URL}/rest/v1${path}`, {
@@ -589,6 +608,11 @@ async function sbFetch(path, opts={}) {
         'Authorization':`Bearer ${token||SB_KEY}`,
         'Prefer':'return=representation', ...(opts.headers||{}) }
     });
+    // Token expired — refresh silently and retry once
+    if(r.status === 401 && !isRetry) {
+      const ok = await refreshSession();
+      if(ok) return sbFetch(path, opts, true);
+    }
     if (!r.ok) { const e=await r.json(); throw new Error(e.message||r.status); }
     return r.status===204 ? null : r.json();
   } catch(e) {
@@ -725,12 +749,25 @@ function doLogout() {
 }
 
 // ══════════════════════════════════════════════════
+// PROACTIVE TOKEN REFRESH — every 45 mins so session never expires mid-use
+// ══════════════════════════════════════════════════
+function startTokenRefreshTimer() {
+  // Refresh token every 45 minutes proactively (tokens expire after 60 mins)
+  setInterval(async () => {
+    if(S.user && S.user.refresh_token) {
+      await refreshSession();
+    }
+  }, 45 * 60 * 1000);
+}
+
+// ══════════════════════════════════════════════════
 // APP INIT
 // ══════════════════════════════════════════════════
 async function showApp() {
   document.getElementById('authPage').style.display='none';
   document.getElementById('mainApp').style.display='';
   document.getElementById('topnav').style.display='flex';
+  startTokenRefreshTimer();
   await loadChildren();
   if(!S.children.length) { showAddChild(); return; }
   S.activeChild = S.children[0];
@@ -1549,21 +1586,30 @@ async function toggleTimetable(childId, day, subjectId) {
 // ══════════════════════════════════════════════════
 // AI HELPER
 // ══════════════════════════════════════════════════
-async function callAI(prompt, maxTokens=1000) {
-  const r = await fetch(AI_URL, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({prompt, max_tokens: maxTokens})
-  });
-  if(!r.ok) throw new Error('AI request failed: ' + r.status);
-  const text = await r.text();
-  if(!text || !text.trim()) throw new Error('AI returned empty response');
-  let d;
-  try { d = JSON.parse(text); } catch(e) { throw new Error('AI response not valid JSON'); }
-  const parsed = typeof d === 'string' ? JSON.parse(d) : d;
-  const result = parsed.content?.[0]?.text || parsed.text || '';
-  if(!result) throw new Error('AI response had no text content');
-  return result;
+async function callAI(prompt, maxTokens=1000, attempt=1) {
+  try {
+    const r = await fetch(AI_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt, max_tokens: maxTokens})
+    });
+    if(!r.ok) throw new Error('AI request failed: ' + r.status);
+    const text = await r.text();
+    if(!text || !text.trim()) throw new Error('AI returned empty response');
+    let d;
+    try { d = JSON.parse(text); } catch(e) { throw new Error('AI response not valid JSON'); }
+    const parsed = typeof d === 'string' ? JSON.parse(d) : d;
+    const result = parsed.content?.[0]?.text || parsed.text || '';
+    if(!result) throw new Error('AI response had no text content');
+    return result;
+  } catch(e) {
+    // Retry once on network errors
+    if(attempt < 2 && (e.message.includes('fetch') || e.message.includes('network') || e.message.includes('empty'))) {
+      await new Promise(r => setTimeout(r, 2000));
+      return callAI(prompt, maxTokens, 2);
+    }
+    throw e;
+  }
 }
 
 // ══════════════════════════════════════════════════
