@@ -970,12 +970,13 @@ async function generateLesson(subjectId, part) {
     const row = {
       child_id: c.id,
       lesson_date: new Date().toISOString().split('T')[0],
-      subject: subjectId, part,
-      title: lesson.title,
-      content: lesson.content,
-      questions: JSON.stringify(lesson.questions||[]),
-      youtube_url: videoUrl,
-      youtube_query: lesson.videoQuery||subj.label,
+      subject: subjectId,
+      part,
+      title: lesson.title || 'Lesson',
+      content: lesson.content || '',
+      questions: lesson.questions||[],
+      youtube_url: videoUrl || null,
+      youtube_query: lesson.videoQuery || subj.label,
       created_at: new Date().toISOString()
     };
     const saved = await sbPost('lessons', row);
@@ -1537,16 +1538,20 @@ async function toggleTimetable(childId, day, subjectId) {
 // AI HELPER
 // ══════════════════════════════════════════════════
 async function callAI(prompt, maxTokens=1000) {
-  const r=await fetch(AI_URL,{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt, max_tokens:maxTokens})
+  const r = await fetch(AI_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({prompt, max_tokens: maxTokens})
   });
-  if(!r.ok) throw new Error('AI request failed: '+r.status);
-  const d=await r.json();
-  // n8n proxy: response may be string-encoded or direct object
+  if(!r.ok) throw new Error('AI request failed: ' + r.status);
+  const text = await r.text();
+  if(!text || !text.trim()) throw new Error('AI returned empty response');
+  let d;
+  try { d = JSON.parse(text); } catch(e) { throw new Error('AI response not valid JSON'); }
   const parsed = typeof d === 'string' ? JSON.parse(d) : d;
-  return parsed.content?.[0]?.text || parsed.text || '';
+  const result = parsed.content?.[0]?.text || parsed.text || '';
+  if(!result) throw new Error('AI response had no text content');
+  return result;
 }
 
 // ══════════════════════════════════════════════════
