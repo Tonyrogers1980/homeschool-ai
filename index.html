@@ -1079,15 +1079,25 @@ async function openLesson(subjectId, part) {
   document.getElementById('lessonMeta').innerHTML = `<span class="subj-pill ${subj.cls}">${subj.label}</span> ${part} · ${S.activeChild?.key_stage}`;
   document.getElementById('lessonBackBtn').onclick = () => openSubject(subjectId);
   try {
-    const markings = await getMarkings([lesson.id]);
+    const [markings, submissions] = await Promise.all([
+      getMarkings([lesson.id]),
+      getSubmission(lesson.id)
+    ]);
     const marking = markings[0]||null;
-    renderLessonBody(lesson, marking, subjectId);
+    renderLessonBody(lesson, marking, subjectId, submissions);
   } catch(e) {
-    renderLessonBody(lesson, null, subjectId);
+    renderLessonBody(lesson, null, subjectId, null);
   }
   goPage('lesson');
 }
-function renderLessonBody(lesson, marking, subjectId) {
+
+async function getSubmission(lessonId) {
+  try {
+    const rows = await sbGet('submissions', `lesson_id=eq.${lessonId}&order=submitted_at.desc&limit=1`);
+    return rows && rows.length ? rows[0] : null;
+  } catch(e) { return null; }
+}
+function renderLessonBody(lesson, marking, subjectId, submission) {
   const body = document.getElementById('lessonBody');
   const qs = parseQs(lesson.questions);
   const videoUrl = lesson.youtube_url || getCuratedVideo(subjectId, S.activeChild?.key_stage);
@@ -1109,7 +1119,7 @@ function renderLessonBody(lesson, marking, subjectId) {
     </div>
   </div>` : '';
   if(marking) {
-    body.innerHTML = videoHtml + renderMarked(lesson, marking, qs);
+    body.innerHTML = videoHtml + renderMarked(lesson, marking, qs, submission);
     return;
   }
   const qHtml = qs.map((q,i)=>`<div class="question-card">
@@ -1179,7 +1189,7 @@ async function submitLesson(lessonId) {
     const savedMarking = marking[0];
     await awardXP(lesson.subject, score, maxScore, lessonId);
     clearDraft(lessonId);
-    renderMarkedView(lesson, savedMarking, qs, score, maxScore, lesson.subject);
+    renderMarkedView(lesson, savedMarking, qs, score, maxScore, lesson.subject, {answers});
     showCelebration(score, maxScore, lesson.subject);
   } catch(e) {
     if(btn) { btn.disabled=false; btn.textContent='Submit for marking ✨'; }
@@ -1237,7 +1247,7 @@ async function checkBadges(subject, score, maxScore) {
     newBadges.forEach(b=>{const def=BADGES_DEF.find(d=>d.id===b);if(def)toast(`🏆 Badge unlocked: ${def.name}!`);});
   }
 }
-function renderMarkedView(lesson, marking, qs, score, maxScore, subject) {
+function renderMarkedView(lesson, marking, qs, score, maxScore, subject, submission) {
   const result = typeof marking.feedback==='string'?JSON.parse(marking.feedback):marking.feedback;
   const videoUrl = lesson.youtube_url || getCuratedVideo(subject, S.activeChild?.key_stage);
   const thumbId = videoUrl ? videoUrl.match(/[?&]v=([^&]+)/)?.[1] : null;
@@ -1245,21 +1255,33 @@ function renderMarkedView(lesson, marking, qs, score, maxScore, subject) {
     <div class="video-thumb" onclick="openVideo('${videoUrl}')"><div class="video-play-icon">▶️</div>${thumbId?`<img src="https://img.youtube.com/vi/${thumbId}/mqdefault.jpg" alt="video thumbnail" onerror="this.style.display='none'">`:''}</div>
     <div class="video-info" style="flex:1"><h4>${lesson.youtube_query||'Educational video'}</h4><button class="video-btn" onclick="markWatched(this,'${videoUrl}')">▶ Watch video</button></div>
   </div>` : '';
-  document.getElementById('lessonBody').innerHTML = videoHtml + renderMarked(lesson, marking, qs);
+  document.getElementById('lessonBody').innerHTML = videoHtml + renderMarked(lesson, marking, qs, submission);
 }
-function renderMarked(lesson, marking, qs) {
+function renderMarked(lesson, marking, qs, submission) {
   const result = typeof marking.feedback==='string'?JSON.parse(marking.feedback):marking.feedback;
   const score=marking.score; const maxScore=marking.max_score;
   const pct=Math.round(score/maxScore*100);
   const stars=pct>=80?3:pct>=50?2:1;
   const [bg,emoji,msg] = pct>=80?['rgba(105,240,174,0.15)','🌟','Outstanding work!']:pct>=50?['rgba(247,201,72,0.15)','⭐','Good effort!']:['rgba(247,89,106,0.15)','💪','Keep practising!'];
+  // Parse saved answers from submission
+  const savedAnswers = (() => {
+    if(!submission) return {};
+    try {
+      const a = typeof submission.answers==='string' ? JSON.parse(submission.answers) : (submission.answers||{});
+      return a;
+    } catch(e) { return {}; }
+  })();
   const fbItems=(result.feedback||[]).map((f,i)=>{
     const q=qs[f.q-1]||qs[i]||{};
+    const idx = f.q!==undefined ? f.q-1 : i;
+    const studentAnswer = savedAnswers[idx] || savedAnswers[String(idx)] || savedAnswers['ans_'+idx] || '';
     return `<div class="q-fb-item">
       <div class="q-fb-header">
         <div class="q-fb-mark ${f.score>0?'correct':'wrong'}">${f.score>0?'✓':'✗'}</div>
         Q${f.q||i+1}: ${f.score||0}/${f.max||q.marks||1} marks
       </div>
+      <div style="font-size:13px;color:var(--text);margin:4px 0 4px 30px;font-weight:600">${q.q||''}</div>
+      ${studentAnswer?`<div style="background:rgba(255,255,255,0.05);border-radius:6px;padding:8px 10px;margin:0 0 6px 30px;font-size:13px;color:var(--muted);font-style:italic;border-left:2px solid var(--accent)">"${studentAnswer}"</div>`:''}
       <div class="q-fb-comment">${f.comment||''}</div>
     </div>`;
   }).join('');
@@ -1275,7 +1297,52 @@ function renderMarked(lesson, marking, qs) {
       ${fbItems}
       ${result.overall?`<div style="padding:14px;background:rgba(124,106,247,0.1);border-radius:var(--radius-sm);margin-top:10px;font-size:14px;line-height:1.6;color:var(--muted)"><strong style="color:var(--text)">🦉 Professor Hoot says:</strong><br>${result.overall}</div>`:''}
     </div>
+  </div>
+  <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+    <div style="font-family:Nunito,sans-serif;font-weight:800;font-size:15px;margin-bottom:6px">Want to improve your score?</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Read Professor Hoot's feedback above, then have another go. Your best score will be kept.</p>
+    <button class="btn btn-primary btn-full" onclick="redoLesson('${lesson.id}')">🔄 Redo this lesson</button>
   </div>`;
+}
+
+async function redoLesson(lessonId) {
+  const lesson = Object.values(S.todayLessons).find(l=>l.id===lessonId);
+  if(!lesson) return;
+  const qs = parseQs(lesson.questions);
+  const videoUrl = lesson.youtube_url || getCuratedVideo(lesson.subject, S.activeChild?.key_stage);
+  const thumbId = videoUrl ? videoUrl.match(/[?&]v=([^&]+)/)?.[1] : null;
+  const videoHtml = videoUrl ? `<div class="video-card">
+    <div class="video-thumb" onclick="openVideo('${videoUrl}')"><div class="video-play-icon">▶️</div>${thumbId?`<img src="https://img.youtube.com/vi/${thumbId}/mqdefault.jpg" alt="video thumbnail" onerror="this.style.display='none'">`:''}</div>
+    <div class="video-info" style="flex:1"><h4>${lesson.youtube_query||'Educational video'}</h4><button class="video-btn" onclick="markWatched(this,'${videoUrl}')">▶ Watch video</button></div>
+  </div>` : '';
+  const qHtml = qs.map((q,i)=>`<div class="question-card">
+    <div class="question-num">Question ${i+1}</div>
+    <div class="question-text">${q.q}</div>
+    <span class="marks-badge">${q.marks} mark${q.marks!==1?'s':''}</span>
+    ${q.hint?`<p style="font-size:12px;color:var(--muted);margin-bottom:8px;font-style:italic">💡 ${q.hint}</p>`:''}
+    <textarea rows="3" placeholder="Write your improved answer here…" id="ans_${i}" style="margin-top:4px"></textarea>
+  </div>`).join('');
+  const body = document.getElementById('lessonBody');
+  body.innerHTML = `${videoHtml}
+    <div style="background:rgba(124,106,247,0.1);border:1px solid rgba(124,106,247,0.3);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--muted)">
+      🦉 Read the feedback carefully and try to improve your answers below.
+    </div>
+    <div class="lesson-content">${markdownToHtml(lesson.content)}</div>
+    <div class="questions-section">
+      <h3>📝 Improved answers</h3>
+      ${qHtml}
+      <div id="draftStatus" style="font-size:12px;color:var(--muted);text-align:right;margin-bottom:6px;min-height:16px"></div>
+      <button class="btn btn-primary btn-full btn-lg" style="margin-top:4px" onclick="submitLesson('${lessonId}')">Submit improved answers ✨</button>
+    </div>`;
+  loadDraft(lessonId + '_redo');
+  document.querySelectorAll('[id^="ans_"]').forEach(el => {
+    el.addEventListener('input', () => {
+      saveDraft(lessonId + '_redo');
+      const status = document.getElementById('draftStatus');
+      if(status) status.textContent = '💾 Draft saved';
+    });
+  });
+  window.scrollTo(0, 0);
 }
 
 // ══════════════════════════════════════════════════
